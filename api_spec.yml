@@ -1,0 +1,276 @@
+openapi: 3.0.1
+info:
+  title: CFDE Dashboard API
+  description: A proposed specification for the CFDE Dashboard project metadata API.
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  version: 0.0.1
+paths:
+  /dcc:
+    get:
+      summary: Returns a listing of the DCCs that have data available in the archive.
+      description: For users to access other endpoints in the API, a listing of the DCC (Data Coordination Center) monikers that exist is necessary, as other methods require the DCC name as a URL parameter.
+      responses:
+        200:
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DCCListingResponse'
+        5XX:
+          description: An unexpected error occurred.
+          headers:
+            X-CFDE-Error:
+              schema:
+                type: string
+              description: Human friendly reason for the error or exception.
+  /dcc/{dccName}:
+    get:
+      description: Returns general information about the specified DCC, such as the Principal Investigator(s) and description.
+      parameters:
+      - name: dccName
+        in: path
+        description: The DCC moniker for which general information is requested.
+        required: true
+        schema:
+          type: string
+      responses:
+        200:
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DCCGeneralInfo'
+        404:
+          description: A DCC with the specified name was not found.
+        5XX:
+          description: An unexpected error occurred.
+          headers:
+            X-CFDE-Error:
+              schema:
+                type: string
+              description: Human friendly reason for the error or exception.
+  /dcc/{dccName}/projects:
+    get:
+      description: Returns a listing of projects associated with the specified DCC.
+      parameters:
+      - name: dccName
+        in: path
+        description: The DCC moniker for which the project listing is requested.
+        required: true
+        schema:
+          type: string
+      responses:
+        200:
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DCCProjectListingResponse'
+        404:
+          description: A DCC with the specified name was not found.
+        5XX:
+          description: An unexpected error occurred.
+          headers:
+            X-CFDE-Error:
+              schema:
+                type: string
+              description: Human friendly reason for the error or exception.
+  /dcc/{dccName}/filecount:
+    get:
+      description: Returns the number of files associated with a particular DCC broken down by data type.
+      parameters:
+      - name: dccName
+        in: path
+        description: The DCC moniker for which file counts are requested.
+        required: true
+        schema:
+          type: string
+      responses:
+        200:
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DCCFileCountResponse'
+        404:
+          description: A DCC with the specified moniker was not found.
+        5XX:
+          description: An unexpected error occurred.
+          headers:
+            X-CFDE-Error:
+              schema:
+                type: string
+              description: Human friendly reason for the error or exception.
+  /dcc/{dccName}/stats/{variable}/{grouping}:
+    get:
+      description: Returns statistics for the requested variable grouped by the specified aggregation.
+      parameters:
+      - name: dccName
+        in: path
+        description: The DCC moniker for which file counts are requested.
+        required: true
+        schema:
+          type: string
+      - name: variable
+        in: path
+        description: One of "files", "volume", "samples" and "subjects".
+        required: true
+        schema:
+          type: string
+      - name: grouping
+        in: path
+        description: One of "data_type", "assay", "species", and "anatomy".
+        required: true
+        schema:
+          type: string
+      responses:
+        200:
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DCCGroupedStatistics'
+        404:
+          description: A DCC with the specified moniker was not found, or invalid variable or grouping.
+        5XX:
+          description: An unexpected error occurred.
+          headers:
+            X-CFDE-Error:
+              schema:
+                type: string
+              description: Human friendly reason for the error or exception.
+components:
+  schemas:
+    DCCListingResponse:
+      type: array
+      description: A list of DCC names that have data available in the database for display.
+      items:
+        type: string
+      example:
+      - HMP
+      - KidsFirst
+      - LINCS
+    DCCProjectListingResponse:
+      type: array
+      description: A list of projects within the DCC.
+      items:
+        type: string
+    DCCGeneralInfo:
+      type: object
+      description: An object with general information about a DCC.
+      required:
+      - moniker
+      - complete_name
+      - description
+      - principal_investigators
+      - url
+      - subject_count
+      - biosample_count
+      - file_count
+      - last_updated
+      properties:
+        moniker:
+          type: string
+          minLength: 3
+          maxLength: 12
+          pattern: "^[0-9A-Za-z_-]$"
+        complete_name:
+          type: string
+          minLength: 3
+          maxLength: 64
+        description:
+          type: string
+          minLength: 3
+          maxLength: 256
+        principal_investigators:
+          type: array
+          items:
+            $ref: '#/components/schemas/PrincipalInvestigator'
+          minItems: 1
+        url:
+          type: string
+          format: uri
+        subject_count:
+          type: integer
+          minimum: 0
+        biosample_count:
+          type: integer
+          minimum: 0
+        file_count:
+          type: integer
+          minimum: 0
+        anatomy_term_count:
+          type: integer
+          minimum: 0
+        last_updated:
+          type: string
+          format: date-time
+      example:
+        moniker: HMP
+        complete_name: The NIH Human Microbiome Project
+        description: Characterization of the microbiomes of healthy human subjects at five major body sites, using 16S and metagenomic shotgun sequencing.
+        principal_investigators:
+        - first_name: Bunsen
+          last_name: Honeydew
+          email: bhoneydew@example.edu
+        url: https://www.hmpdacc.org
+        subject_count: 961
+        biosample_count: 53272
+        file_count: 14565139
+        anatomy_term_count: 156
+        last_updated: "2020-09-30T02:51:20Z"
+    PrincipalInvestigator:
+      type: object
+      description: A basic object describing a Principal Investigator, including name and email contact information.
+      required:
+      - first_name
+      - last_name
+      - email
+      properties:
+        first_name:
+          type: string
+          minLength: 2
+          maxLength: 64
+        last_name:
+          type: string
+          minLength: 2
+          maxLength: 64
+        email:
+          type: string
+          format: email
+      example:
+        first_name: Bunsen
+        last_name: Honeydew
+        email: bhoneydew@example.edu
+    DCCFileCountResponse:
+      type: object
+      description: A mapping of data types to the file counts associated with them.
+      additionalProperties:
+        type: integer
+        minimum: 0
+    DCCGrouping:
+      type: object
+      description: How a brick in the dashboard stacked bar plot is described.
+      required:
+      - data_type
+      properties:
+        data_type:
+          type: string
+          minLength: 5
+      additionalProperties:
+        type: integer
+      example:
+        data_type: Mass spectrometry data
+        Other: 493725995
+        venous blood: 0
+        upper lobe of left lung: 0
+        gastrocnemius medialis: 0
+        alimentary part of gastrointestinal system: 0
+    DCCGroupedStatistics:
+      type: array
+      description: TODO
+      items:
+        $ref: "#/components/schemas/DCCGrouping"
+      minItems: 1
