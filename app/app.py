@@ -8,9 +8,9 @@ from cfde_deriva.dashboard_queries import StatsQuery, DashboardQueryHelper
 app = Flask(__name__)
 app.debug = True
 
-HOSTNAME = os.getenv('DERIVA_SERVERNAME')
-CATALOGID = os.getenv('DERIVA_CATALOGID')
 
+hostname = os.getenv('DERIVA_SERVERNAME')
+catalogid = os.getenv('DERIVA_CATALOGID')
 helper = DashboardQueryHelper(hostname, catalogid)
 
 def _error_response(err, code):
@@ -23,7 +23,7 @@ def _dcc_not_found_response(dcc_name):
 
 def _abbreviation_to_dcc(dcc_name):
     # helper.list_projects removes attributes from project and also performs an additional
-    # join to compute num_subprojects
+    # join to compute num_subprojects, which we don't need
 #    dccs = list(helper.list_projects(use_root_projects=True))
 #    for dcc in dccs:
 #        if dcc['abbreviation'] == dcc_name:
@@ -162,6 +162,20 @@ def dcc_filecount(dcc_name):
 
     return json.dumps(res)
 
+# parameterization for dcc_grouped_stats
+VARIABLE_MAP = {
+    'files': { 'entity': 'file', 'att': 'num_files' },
+    'volume': { 'entity': 'file', 'att': 'num_bytes' },
+    'samples': { 'entity': 'biosample','att': 'num_biosamples' },
+    'subjects': { 'entity': 'subject', 'att': 'num_subjects' },
+}
+GROUPING_MAP = {
+    'data_type': { 'dimension': 'data_type', 'att': 'data_type_name' },
+    'assay': { 'dimension': 'assay_type', 'att': 'assay_type_name' },
+    'species': { 'dimension': 'species', 'att': 'species_name' },
+    'anatomy': { 'dimension': 'anatomy', 'att': 'anatomy_name' },
+}
+
 # /dcc/{dccName}/stats/{variable}/{grouping}
 # Returns statistics for the requested variable grouped by the specified aggregation.
 @app.route('/dcc/<string:dcc_name>/stats/<string:variable>/<string:grouping>', methods=['GET'])
@@ -191,22 +205,8 @@ def dcc_grouped_stats(dcc_name,variable,grouping):
     if dcc is None:
         return _dcc_not_found_response(dcc_name)
 
-    # parameterization
-    variable_map = {
-        'files': { 'entity': 'file', 'att': 'num_files' },
-        'volume': { 'entity': 'file', 'att': 'num_bytes' },
-        'samples': { 'entity': 'biosample','att': 'num_biosamples' },
-        'subjects': { 'entity': 'subject', 'att': 'num_subjects' },
-    }
-    grouping_map = {
-        'data_type': { 'dimension': 'data_type', 'att': 'data_type_name' },
-        'assay': { 'dimension': 'assay_type', 'att': 'assay_type_name' },
-        'species': { 'dimension': 'species', 'att': 'species_name' },
-        'anatomy': { 'dimension': 'anatomy', 'att': 'anatomy_name' },
-    }
-
-    vm = variable_map[variable]
-    gm = grouping_map[grouping]
+    vm = VARIABLE_MAP[variable]
+    gm = GROUPING_MAP[grouping]
     counts = list(StatsQuery(helper).entity(vm['entity']).dimension(gm['dimension']).dimension('project_root').fetch())   
     res = {}
     
