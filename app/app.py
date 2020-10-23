@@ -174,6 +174,7 @@ GROUPING_MAP = {
     'assay': { 'dimension': 'assay_type', 'att': 'assay_type_name' },
     'species': { 'dimension': 'species', 'att': 'species_name' },
     'anatomy': { 'dimension': 'anatomy', 'att': 'anatomy_name' },
+    'dcc': {'dimension': 'project_root', 'att': 'project_RID' },
 }
 
 # /dcc/{dccName}/stats/{variable}/{grouping}
@@ -216,3 +217,71 @@ def dcc_grouped_stats(dcc_name,variable,grouping):
 
     # return type is DCCGroupedStatistics, which is a list of DCCGrouping
     return json.dumps([res])
+
+# TODO - add this to Swagger API. Can't support dashboard without it.
+
+# /dcc/stats/{variable}/{grouping}
+# Returns statistics for the requested variable grouped by the specified aggregation.
+@app.route('/stats/<string:variable>/<string:grouping1>/<string:grouping2>', methods=['GET'])
+def grouped_stats(variable,grouping1,grouping2):
+    err = None
+
+    #  check that variable is one of 'files', 'volume', 'samples', 'subjects'
+    legal_vars = ['files','volume','samples','subjects'];
+    legal_vars_re_str = '^' + "|".join(legal_vars) + '$'
+    legal_vars_re = re.compile('^(' + "|".join(legal_vars) + ')$')
+    if not (legal_vars_re.match(variable)):
+        err = "Illegal variable requested - must be one of " + ",".join(legal_vars)
+        
+    # check that grouping1 and grouping2 is one of 'data_type', 'assay', 'species', 'anatomy', 'dcc'
+    legal_groups = ['data_type','assay','species','anatomy','dcc'];
+    legal_groups_re = re.compile('^(' + "|".join(legal_groups) + ')$')
+    if not (legal_groups_re.match(grouping1)):
+        err = "Illegal grouping1 requested - must be one of " + ",".join(legal_groups)
+    if not (legal_groups_re.match(grouping2)):
+        err = "Illegal grouping2 requested - must be one of " + ",".join(legal_groups)
+    if grouping1 == grouping2:
+        err = "grouping1 and grouping2 cannot be the same dimension."
+    
+    # input error
+    if err is not None:
+        return _error_response(err, 404)
+
+    # need to map project_RID to project_abbreviation if grouping=dcc
+    rid_to_abbrev = {}
+    if (grouping1 == "dcc") or (grouping2 == "dcc"):
+        dccs = list(helper.list_projects(use_root_projects=True))
+        for dcc in dccs:
+            rid_to_abbrev[dcc['RID']] = dcc['abbreviation']
+    
+    vm = VARIABLE_MAP[variable]
+    gm1 = GROUPING_MAP[grouping1]
+    gm2 = GROUPING_MAP[grouping2]
+    
+    counts = list(StatsQuery(helper).entity(vm['entity']).dimension(gm1['dimension']).dimension(gm2['dimension']).fetch())   
+
+    dim1_counts = {}
+    res = []
+
+    # StatsQuery output looks like this:
+    # {'anatomy_id': 'UBERON:0002387', 'species_id': 'NCBI:txid9606', 'num_subjects': 1, 'anatomy_name': 'pes', 'species_name': 'Homo sapiens'}
+    # The following code aggregates/rewrites to this format (expected by dashboard):
+    # {"anatomy": "pes", "Homo sapiens": 1}
+    for ct in counts:
+        dim1 = ct[gm1['att']]
+        dim2 = ct[gm2['att']]
+
+        # map RID to abbreviation if needed
+        if (grouping1 == "dcc"):
+            dim1 = rid_to_abbrev[dim1]
+        if (grouping2 == "dcc"):
+            dim2 = rid_to_abbrev[dim2]
+        
+        if not (dim1 in dim1_counts):
+            dim1_counts[dim1] = { grouping1 : dim1 }
+            res.append(dim1_counts[dim1])
+
+        dim1_counts[dim1][dim2] = ct[vm['att']]
+
+    # return type is DCCGroupedStatistics, which is a list of DCCGrouping
+    return json.dumps(res)
