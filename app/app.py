@@ -8,9 +8,19 @@ from cfde_deriva.dashboard_queries import StatsQuery, DashboardQueryHelper
 app = Flask(__name__)
 app.debug = True
 
-
 hostname = os.getenv('DERIVA_SERVERNAME')
 catalogid = os.getenv('DERIVA_CATALOGID')
+
+legal_vars = ['files','volume','samples','subjects'];
+legal_vars_re = re.compile('^(' + "|".join(legal_vars) + ')$')
+
+legal_groups = ['data_type','assay','species','anatomy'];
+legal_groups_re = re.compile('^(' + "|".join(legal_groups) + ')$')
+
+# same as legal groups plus 'dcc'
+legal_groups_dcc = ['data_type','assay','species','anatomy','dcc'];
+legal_groups_dcc_re = re.compile('^(' + "|".join(legal_groups_dcc) + ')$')
+
 helper = DashboardQueryHelper(hostname, catalogid)
 
 def _error_response(err, code):
@@ -25,10 +35,6 @@ def _abbreviation_to_dcc(dcc_name):
     # helper.list_projects removes attributes from project and also performs an additional
     # join to compute num_subprojects, which we don't need
 #    dccs = list(helper.list_projects(use_root_projects=True))
-#    for dcc in dccs:
-#        if dcc['abbreviation'] == dcc_name:
-#            print("got dcc = " + str(dcc))
-#            return dcc
 
     # direct query by DCC abbreviation with no additional joins
     p_root = helper.builder.CFDE.project_root.alias('p_root')
@@ -184,16 +190,11 @@ def dcc_grouped_stats(dcc_name,variable,grouping):
     err = None
 
     #  check that variable is one of 'files', 'volume', 'samples', 'subjects'
-    legal_vars = ['files','volume','samples','subjects'];
-    legal_vars_re_str = '^' + "|".join(legal_vars) + '$'
-    legal_vars_re = re.compile('^(' + "|".join(legal_vars) + ')$')
-    if not (legal_vars_re.match(variable)):
+    if not legal_vars_re.match(variable):
         err = "Illegal variable requested - must be one of " + ",".join(legal_vars)
         
     # check that grouping is one of 'data_type', 'assay', 'species', 'anatomy'
-    legal_groups = ['data_type','assay','species','anatomy'];
-    legal_groups_re = re.compile('^(' + "|".join(legal_groups) + ')$')
-    if not (legal_groups_re.match(grouping)):
+    if not legal_groups_re.match(grouping):
         err = "Illegal grouping requested - must be one of " + ",".join(legal_groups)
 
     # input error
@@ -218,34 +219,7 @@ def dcc_grouped_stats(dcc_name,variable,grouping):
     # return type is DCCGroupedStatistics, which is a list of DCCGrouping
     return json.dumps([res])
 
-# TODO - add this to Swagger API. Can't support dashboard without it.
-
-# /dcc/stats/{variable}/{grouping}
-# Returns statistics for the requested variable grouped by the specified aggregation.
-@app.route('/stats/<string:variable>/<string:grouping1>/<string:grouping2>', methods=['GET'])
-def grouped_stats(variable,grouping1,grouping2):
-    err = None
-
-    #  check that variable is one of 'files', 'volume', 'samples', 'subjects'
-    legal_vars = ['files','volume','samples','subjects'];
-    legal_vars_re_str = '^' + "|".join(legal_vars) + '$'
-    legal_vars_re = re.compile('^(' + "|".join(legal_vars) + ')$')
-    if not (legal_vars_re.match(variable)):
-        err = "Illegal variable requested - must be one of " + ",".join(legal_vars)
-        
-    # check that grouping1 and grouping2 is one of 'data_type', 'assay', 'species', 'anatomy', 'dcc'
-    legal_groups = ['data_type','assay','species','anatomy','dcc'];
-    legal_groups_re = re.compile('^(' + "|".join(legal_groups) + ')$')
-    if not (legal_groups_re.match(grouping1)):
-        err = "Illegal grouping1 requested - must be one of " + ",".join(legal_groups)
-    if not (legal_groups_re.match(grouping2)):
-        err = "Illegal grouping2 requested - must be one of " + ",".join(legal_groups)
-    if grouping1 == grouping2:
-        err = "grouping1 and grouping2 cannot be the same dimension."
-    
-    # input error
-    if err is not None:
-        return _error_response(err, 404)
+def _grouped_stats_aux(variable,grouping1,max_groups1,grouping2,max_groups2):
 
     # need to map project_RID to project_abbreviation if grouping=dcc
     rid_to_abbrev = {}
@@ -283,5 +257,159 @@ def grouped_stats(variable,grouping1,grouping2):
 
         dim1_counts[dim1][dim2] = ct[vm['att']]
 
+    return res
+        
+# TODO - add these calls to Swagger API. Can't support dashboard without them.
+# TODO - factor out parameter error-checking code
+
+# /dcc/stats/{variable}/{grouping}
+# Returns statistics for the requested variable grouped by the specified aggregation.
+@app.route('/stats/<string:variable>/<string:grouping1>/<string:grouping2>', methods=['GET'])
+def grouped_stats(variable,grouping1,grouping2):
+    err = None
+
+    #  check that variable is one of 'files', 'volume', 'samples', 'subjects'
+    if not legal_vars_re.match(variable):
+        err = "Illegal variable requested - must be one of " + ",".join(legal_vars)
+    # check that grouping1 and grouping2 is one of 'data_type', 'assay', 'species', 'anatomy', 'dcc'
+    if not legal_groups_dcc_re.match(grouping1):
+        err = "Illegal grouping1 requested - must be one of " + ",".join(legal_groups)
+    if not legal_groups_dcc_re.match(grouping2):
+        err = "Illegal grouping2 requested - must be one of " + ",".join(legal_groups)
+    if grouping1 == grouping2:
+        err = "grouping1 and grouping2 cannot be the same dimension."
+    
+    # input error
+    if err is not None:
+        return _error_response(err, 404)
+
+    res = _grouped_stats_aux(variable, grouping1, None, grouping2, None)
+
+    # return type is DCCGroupedStatistics, which is a list of DCCGrouping
+    return json.dumps(res)
+
+def _merge_within_groups(groups, max_atts):
+    # add up group2 counts across all DCCGroupings
+    gcounts = {}
+
+    for group in groups:
+        for k in group:
+            if not legal_groups_dcc_re.match(k):
+                if k not in gcounts:
+                    gcounts[k] = 0
+                gcounts[k] += group[k]
+
+    # sort groups and determine which to merge
+    gsorted = sorted(list(gcounts.keys()), key=lambda x: gcounts[x], reverse=True)
+
+    if len(gsorted) <= max_atts:
+        return groups
+
+    # create mapping from old group to new group
+    gmap = {}
+    i = 0
+    for group in gsorted:
+        if i >= max_atts:
+            gmap[group] = 'other'
+        else:
+            gmap[group] = group
+        i += 1
+
+    # apply mapping to groups
+    new_groups = []
+    for group in groups:
+        new_group = {}
+        for k in group:
+            new_k = k
+            if k in gmap:
+                new_k = gmap[k]
+            if new_k in new_group:
+                new_group[new_k] += group[k]
+            else:
+                new_group[new_k] = group[k]
+
+        new_groups.append(new_group)
+    
+    return new_groups
+
+# returns groups sorted by descending total count, even if len(groups) <= max_groups
+def _merge_groups(groups, max_groups):
+    # sort groups by total count, retain the max_groups with the highest counts
+    groups_w_count = []
+    for group in groups:
+        gwc = { 'group': group, 'total': 0}
+        groups_w_count.append(gwc)
+        for k in group:
+            if not legal_groups_dcc_re.match(k):
+                gwc['total'] += group[k]
+
+    sorted_gwc = sorted(groups_w_count, key=lambda x: x['total'], reverse=True)
+    sorted_groups = [x['group'] for x in sorted_gwc]
+    
+    new_groups = []
+    last_group = {}
+    i = 0
+
+    for group in sorted_groups:
+        # add group to list
+        if i < max_groups:
+            new_groups.append(group)
+        # add group to last group
+        else:
+            for k in group:
+                if re.match(r'^(anatomy|data_type|assay_type|species|dcc)$', k):
+                    last_group[k] = 'other'
+                else:
+                    if k in last_group:
+                        last_group[k] += group[k]
+                    else:
+                        last_group[k] = group[k]
+        i += 1
+
+    if len(last_group.keys()) > 0:
+        new_groups.append(last_group)
+    return new_groups
+    
+# /dcc/stats/{variable}/{grouping}
+# Returns statistics for the requested variable grouped by the specified aggregation.
+# If there are more than maxgroups1 groups in grouping1 or more than maxgroups2 groups
+# in grouping2 then the extra groups will be merged into a single additional group
+# called 'other'.
+@app.route('/stats/<string:variable>/<string:grouping1>/<int:maxgroups1>/<string:grouping2>/<int:maxgroups2>', methods=['GET'])
+def grouped_stats_other(variable,grouping1,maxgroups1,grouping2,maxgroups2):
+    err = None
+
+    #  check that variable is one of 'files', 'volume', 'samples', 'subjects'
+    if not legal_vars_re.match(variable):
+        err = "Illegal variable requested - must be one of " + ",".join(legal_vars)
+        
+    # check that grouping1 and grouping2 is one of 'data_type', 'assay', 'species', 'anatomy', 'dcc'
+    if not legal_groups_dcc_re.match(grouping1):
+        err = "Illegal grouping1 requested - must be one of " + ",".join(legal_groups)
+    if not legal_groups_dcc_re.match(grouping2):
+        err = "Illegal grouping2 requested - must be one of " + ",".join(legal_groups)
+    if grouping1 == grouping2:
+        err = "grouping1 and grouping2 cannot be the same dimension."
+
+    if (maxgroups1 is not None) and (maxgroups1 < 0):
+        err = "maxgroups1 must be >= 0"
+    if (maxgroups2 is not None) and (maxgroups2 < 0):
+        err = "maxgroups2 must be >= 0"
+        
+    # input error
+    if err is not None:
+        return _error_response(err, 404)
+
+    # returns list of DCCGrouping
+    res = _grouped_stats_aux(variable, grouping1, maxgroups1, grouping2, maxgroups2)
+
+    # merge groups2 (i.e., merge counts within each DCCGrouping)
+    if maxgroups2 is not None:
+        res = _merge_within_groups(res, maxgroups2)
+        
+    # merge groups1 (i.e., merge GCCGroupings
+    if maxgroups1 is not None:
+        res = _merge_groups(res, maxgroups1)
+    
     # return type is DCCGroupedStatistics, which is a list of DCCGrouping
     return json.dumps(res)
