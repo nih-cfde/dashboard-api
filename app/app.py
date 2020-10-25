@@ -255,7 +255,11 @@ def _grouped_stats_aux(variable,grouping1,max_groups1,grouping2,max_groups2):
             dim1_counts[dim1] = { grouping1 : dim1 }
             res.append(dim1_counts[dim1])
 
-        dim1_counts[dim1][dim2] = ct[vm['att']]
+        # replace None with 0
+        if ct[vm['att']] is None:
+            dim1_counts[dim1][dim2] = 0
+        else:
+            dim1_counts[dim1][dim2] = ct[vm['att']]
 
     return res
         
