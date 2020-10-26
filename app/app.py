@@ -354,6 +354,7 @@ def _merge_within_groups_local(groups, max_atts, grouping1):
             else:
                 atts.append({ 'att': k, 'count': group[k] })
 
+        sorted_atts = sorted(atts, key=lambda x: x['count'], reverse=True)
         i = 0
         for att in [x['att'] for x in sorted_atts]:
             new_att = att
@@ -364,7 +365,6 @@ def _merge_within_groups_local(groups, max_atts, grouping1):
             new_group[new_att] += group[att]
             i += 1
 
-        print("new_group=" + str(new_group))
         new_groups.append(new_group)
     
     return new_groups
