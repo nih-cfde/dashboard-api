@@ -141,6 +141,94 @@ paths:
               schema:
                 type: string
               description: Human friendly reason for the error or exception.
+  /stats/{variable}/{grouping1}/{grouping2}:
+    get:
+      description: Returns statistics for the requested variable grouped by the specified aggregations.
+      parameters:
+      - name: variable
+        in: path
+        description: One of "files", "volume", "samples" and "subjects".
+        required: true
+        schema:
+          type: string
+      - name: grouping1
+        in: path
+        description: One of "dcc", "data_type", "assay", "species", and "anatomy".
+        required: true
+        schema:
+          type: string
+      - name: grouping2
+        in: path
+        description: One of "dcc", "data_type", "assay", "species", and "anatomy".
+        required: true
+        schema:
+          type: string
+      responses:
+        200:
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DCCGroupedStatistics'
+        404:
+          description: Invalid variable or grouping(s).
+        5XX:
+          description: An unexpected error occurred.
+          headers:
+            X-CFDE-Error:
+              schema:
+                type: string
+              description: Human friendly reason for the error or exception.
+  /stats/{variable}/{grouping1}/{max_groups1}/{grouping2}/{max_groups2}:
+    get:
+      description: Returns statistics for the requested variable grouped by the specified aggregations, with limits imposed on the maximum numbers of groups. If the number of groups in grouping1 or grouping2 exceeds the indicated maximum then the remaining groups will be merged into a new group called 'other'. The end result will therefore have at most max_groups1 + 1 groups in grouping1 and at most max_groups2 + 1 groups in grouping2.
+      parameters:
+      - name: variable
+        in: path
+        description: One of "files", "volume", "samples" and "subjects".
+        required: true
+        schema:
+          type: string
+      - name: grouping1
+        in: path
+        description: One of "dcc", "data_type", "assay", "species", and "anatomy".
+        required: true
+        schema:
+          type: string
+      - name: max_groups1
+        in: path
+        description: Maximum number of groups (plus 'other' if there are more) to return for grouping1.
+        required: true
+        schema:
+          type: integer
+      - name: grouping2
+        in: path
+        description: One of "dcc", "data_type", "assay", "species", and "anatomy".
+        required: true
+        schema:
+          type: string
+      - name: max_groups2
+        in: path
+        description: Maximum number of groups (plus 'other' if there are more) to return for grouping2.
+        required: true
+        schema:
+          type: integer
+      responses:
+        200:
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DCCGroupedStatistics'
+        404:
+          description: Invalid variable or grouping(s).
+        5XX:
+          description: An unexpected error occurred.
+          headers:
+            X-CFDE-Error:
+              schema:
+                type: string
+              description: Human friendly reason for the error or exception.
 components:
   schemas:
     DCCListingResponse:
