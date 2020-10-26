@@ -442,7 +442,10 @@ def grouped_stats_other(variable,grouping1,maxgroups1,grouping2,maxgroups2):
 
     # merge groups2 (i.e., merge counts within each DCCGrouping)
     if maxgroups2 is not None:
+        # enforce group2 maximum within each group independently
         res = _merge_within_groups_local(res, maxgroups2, grouping1)
+        # enforce group2 maximum across groups
+#        res = _merge_within_groups_global(res, maxgroups2, grouping1)
         
     # merge groups1 (i.e., merge GCCGroupings
     if maxgroups1 is not None:
