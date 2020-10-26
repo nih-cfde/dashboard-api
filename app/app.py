@@ -293,19 +293,19 @@ def grouped_stats(variable,grouping1,grouping2):
     return json.dumps(res)
 
 # merge attributes within groups using a global limit on the number of attributes
-def _merge_within_groups_global(groups, max_atts):
+def _merge_within_groups_global(groups, max_atts, grouping1):
     # add up group2 counts across all DCCGroupings
     gcounts = {}
 
     for group in groups:
         for k in group:
-            if not legal_groups_dcc_re.match(k):
+            if k != grouping1:
                 if k not in gcounts:
                     gcounts[k] = 0
                 gcounts[k] += group[k]
 
     # sort groups and determine which to merge
-    gsorted = sorted(list(gcounts.keys()), key=lambda x: gcounts[x], reverse=True)
+    gsorted = sorted(list(gcounts.keys()), key=lambda x: int(gcounts[x]), reverse=True)
 
     if len(gsorted) <= max_atts:
         return groups
@@ -339,7 +339,7 @@ def _merge_within_groups_global(groups, max_atts):
 
 # merge attributes within groups using a local limit on the number of attributes
 # (i.e., the total number of distinct attributes may exceed max_atts, theoretically by a lot)
-def _merge_within_groups_local(groups, max_atts):
+def _merge_within_groups_local(groups, max_atts, grouping1):
     # apply mapping to groups
     new_groups = []
 
@@ -349,12 +349,10 @@ def _merge_within_groups_local(groups, max_atts):
         
         # sort attributes by count
         for k in group:
-            if legal_groups_dcc_re.match(k):
+            if k == grouping1:
                 new_group[k] = group[k]
             else:
                 atts.append({ 'att': k, 'count': group[k] })
-                
-        sorted_atts = sorted(atts, key=lambda x: x['count'], reverse=True)
 
         i = 0
         for att in [x['att'] for x in sorted_atts]:
@@ -366,22 +364,23 @@ def _merge_within_groups_local(groups, max_atts):
             new_group[new_att] += group[att]
             i += 1
 
+        print("new_group=" + str(new_group))
         new_groups.append(new_group)
     
     return new_groups
 
 # returns groups sorted by descending total count, even if len(groups) <= max_groups
-def _merge_groups(groups, max_groups):
+def _merge_groups(groups, max_groups, grouping1):
     # sort groups by total count, retain the max_groups with the highest counts
     groups_w_count = []
     for group in groups:
         gwc = { 'group': group, 'total': 0}
         groups_w_count.append(gwc)
         for k in group:
-            if not legal_groups_dcc_re.match(k):
+            if k != grouping1:
                 gwc['total'] += group[k]
 
-    sorted_gwc = sorted(groups_w_count, key=lambda x: x['total'], reverse=True)
+    sorted_gwc = sorted(groups_w_count, key=lambda x: int(x['total']), reverse=True)
     sorted_groups = [x['group'] for x in sorted_gwc]
     
     new_groups = []
@@ -443,11 +442,11 @@ def grouped_stats_other(variable,grouping1,maxgroups1,grouping2,maxgroups2):
 
     # merge groups2 (i.e., merge counts within each DCCGrouping)
     if maxgroups2 is not None:
-        res = _merge_within_groups_local(res, maxgroups2)
+        res = _merge_within_groups_local(res, maxgroups2, grouping1)
         
     # merge groups1 (i.e., merge GCCGroupings
     if maxgroups1 is not None:
-        res = _merge_groups(res, maxgroups1)
+        res = _merge_groups(res, maxgroups1, grouping1)
     
     # return type is DCCGroupedStatistics, which is a list of DCCGrouping
     return json.dumps(res)
