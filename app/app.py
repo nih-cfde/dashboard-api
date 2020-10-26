@@ -216,8 +216,8 @@ def dcc_grouped_stats(dcc_name,variable,grouping):
         if ct['project_RID'] == dcc['RID']:
             res[ct[gm['att']]] = ct[vm['att']]
 
-    # return type is DCCGroupedStatistics, which is a list of DCCGrouping
-    return json.dumps([res])
+    # return type is DCCGrouping
+    return json.dumps(res)
 
 def _grouped_stats_aux(variable,grouping1,max_groups1,grouping2,max_groups2):
 

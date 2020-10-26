@@ -131,7 +131,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DCCGroupedStatistics'
+                $ref: '#/components/schemas/DCCGrouping'
         404:
           description: A DCC with the specified moniker was not found, or invalid variable or grouping.
         5XX:
