@@ -358,7 +358,7 @@ components:
         alimentary part of gastrointestinal system: 0
     DCCGroupedStatistics:
       type: array
-      description: TODO
+      description: List of DCCGrouping. Provides the information to populate a stacked bar plot.
       items:
         $ref: "#/components/schemas/DCCGrouping"
       minItems: 1
