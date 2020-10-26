@@ -292,7 +292,8 @@ def grouped_stats(variable,grouping1,grouping2):
     # return type is DCCGroupedStatistics, which is a list of DCCGrouping
     return json.dumps(res)
 
-def _merge_within_groups(groups, max_atts):
+# merge attributes within groups using a global limit on the number of attributes
+def _merge_within_groups_global(groups, max_atts):
     # add up group2 counts across all DCCGroupings
     gcounts = {}
 
@@ -331,6 +332,39 @@ def _merge_within_groups(groups, max_atts):
                 new_group[new_k] += group[k]
             else:
                 new_group[new_k] = group[k]
+
+        new_groups.append(new_group)
+    
+    return new_groups
+
+# merge attributes within groups using a local limit on the number of attributes
+# (i.e., the total number of distinct attributes may exceed max_atts, theoretically by a lot)
+def _merge_within_groups_local(groups, max_atts):
+    # apply mapping to groups
+    new_groups = []
+
+    for group in groups:
+        new_group = {}
+        atts = []
+        
+        # sort attributes by count
+        for k in group:
+            if legal_groups_dcc_re.match(k):
+                new_group[k] = group[k]
+            else:
+                atts.append({ 'att': k, 'count': group[k] })
+                
+        sorted_atts = sorted(atts, key=lambda x: x['count'], reverse=True)
+
+        i = 0
+        for att in [x['att'] for x in sorted_atts]:
+            new_att = att
+            if i >= max_atts:
+                new_att = 'other'
+            if new_att not in new_group:
+                new_group[new_att] = 0
+            new_group[new_att] += group[att]
+            i += 1
 
         new_groups.append(new_group)
     
@@ -409,7 +443,7 @@ def grouped_stats_other(variable,grouping1,maxgroups1,grouping2,maxgroups2):
 
     # merge groups2 (i.e., merge counts within each DCCGrouping)
     if maxgroups2 is not None:
-        res = _merge_within_groups(res, maxgroups2)
+        res = _merge_within_groups_local(res, maxgroups2)
         
     # merge groups1 (i.e., merge GCCGroupings
     if maxgroups1 is not None:
