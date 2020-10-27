@@ -6,12 +6,19 @@ info:
     name: Apache 2.0
     url: http://www.apache.org/licenses/LICENSE-2.0.html
   version: 0.0.1
+tags:
+   - name: "DCC"
+     description: "Get information about a single specific DCC."
+   - name: "Stats"
+     description: "Get summary information about multiple DCCs."
 paths:
   /dcc:
     get:
       summary: Returns a listing of the DCCs that have data available in the archive.
       description: For users to access other endpoints in the API, a listing of the DCC (Data Coordination Center) monikers that exist is necessary, as other methods require the DCC name as a URL parameter.
-      responses:
+      tags:
+      - DCC
+    responses:
         200:
           description: Successful operation.
           content:
@@ -28,6 +35,8 @@ paths:
   /dcc/{dccName}:
     get:
       description: Returns general information about the specified DCC, such as the Principal Investigator(s) and description.
+      tags:
+      - DCC
       parameters:
       - name: dccName
         in: path
@@ -54,6 +63,8 @@ paths:
   /dcc/{dccName}/projects:
     get:
       description: Returns a listing of projects associated with the specified DCC.
+      tags:
+      - DCC
       parameters:
       - name: dccName
         in: path
@@ -80,6 +91,8 @@ paths:
   /dcc/{dccName}/filecount:
     get:
       description: Returns the number of files associated with a particular DCC broken down by data type.
+      tags:
+      - DCC
       parameters:
       - name: dccName
         in: path
@@ -106,6 +119,8 @@ paths:
   /dcc/{dccName}/stats/{variable}/{grouping}:
     get:
       description: Returns statistics for the requested variable grouped by the specified aggregation.
+      tags:
+      - DCC
       parameters:
       - name: dccName
         in: path
@@ -144,6 +159,8 @@ paths:
   /stats/{variable}/{grouping1}/{grouping2}:
     get:
       description: Returns statistics for the requested variable grouped by the specified aggregations.
+      tags:
+      - Stats
       parameters:
       - name: variable
         in: path
@@ -182,6 +199,8 @@ paths:
   /stats/{variable}/{grouping1}/{max_groups1}/{grouping2}/{max_groups2}:
     get:
       description: Returns statistics for the requested variable grouped by the specified aggregations, with limits imposed on the maximum numbers of groups. If the number of groups in grouping1 or grouping2 exceeds the indicated maximum then the remaining groups will be merged into a new group called 'other'. The end result will therefore have at most max_groups1 + 1 groups in grouping1 and at most max_groups2 + 1 groups in grouping2.
+      tags:
+      - Stats
       parameters:
       - name: variable
         in: path
