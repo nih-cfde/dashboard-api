@@ -116,6 +116,34 @@ paths:
               schema:
                 type: string
               description: Human friendly reason for the error or exception.
+  /dcc/{dccName}/linkcount:
+    get:
+      description: Returns counts of linked entities (e.g., biosamples linked to subjects) for a specific DCC.
+      tags:
+      - DCC
+      parameters:
+      - name: dccName
+        in: path
+        description: The DCC moniker for which linked entity counts are requested.
+        required: true
+        schema:
+          type: string
+      responses:
+        200:
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DCCLinkCountResponse'
+        404:
+          description: A DCC with the specified moniker was not found.
+        5XX:
+          description: An unexpected error occurred.
+          headers:
+            X-CFDE-Error:
+              schema:
+                type: string
+              description: Human friendly reason for the error or exception.
   /dcc/{dccName}/stats/{variable}/{grouping}:
     get:
       description: Returns statistics for the requested variable grouped by the specified aggregation.
@@ -357,6 +385,37 @@ components:
       additionalProperties:
         type: integer
         minimum: 0
+    DCCLinkCountResponse:
+      type: object
+      description: Counts of entities (e.g., subject, biosample) that are linked to another entity of a specified type.
+      properties:
+        subject_count:
+          type: integer
+          minimum: 0
+        subject_with_biosample_count:
+          type: integer
+          minimum: 0
+        subject_with_file_count:
+          type: integer
+          minimum: 0
+        biosample_count:
+          type: integer
+          minimum: 0
+        biosample_with_subject_count:
+          type: integer
+          minimum: 0
+        biosample_with_file_count:
+          type: integer
+          minimum: 0
+        file_count:
+          type: integer
+          minimum: 0
+        file_with_subject_count:
+          type: integer
+          minimum: 0
+        file_with_biosample_count:
+          type: integer
+          minimum: 0
     DCCGrouping:
       type: object
       description: How a brick in the dashboard stacked bar plot is described.

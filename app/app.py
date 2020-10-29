@@ -4,6 +4,7 @@ import re
 from flask import Flask, url_for, redirect, request, make_response
 from os import path
 from cfde_deriva.dashboard_queries import StatsQuery, DashboardQueryHelper
+from deriva.core.datapath import Min, Max, Cnt, CntD, Avg, Sum, Bin
 
 app = Flask(__name__)
 app.debug = True
@@ -158,13 +159,115 @@ def dcc_filecount(dcc_name):
     if dcc is None:
         return _dcc_not_found_response(dcc_name)
 
+#    fcounts = list(StatsQuery(helper).entity('file').dimension('project_root').fetch()),
+#    print("fcounts=" + str(fcounts))
+    
     # DCC found
     fcounts = list(StatsQuery(helper).entity('file').dimension('data_type').dimension('project_root').fetch()),
     res = {}
-    
+
     for fc in fcounts[0]:
         if fc['project_RID'] == dcc['RID']:
             res[fc['data_type_name']] = fc['num_files']
+
+    return json.dumps(res)
+
+# /dcc/{dccName}/linkcount
+# Returns the number of linked entities for various combinations.
+@app.route('/dcc/<string:dcc_name>/linkcount', methods=['GET'])
+def dcc_linkscount(dcc_name):
+    res = {}
+    dcc = _abbreviation_to_dcc(dcc_name)
+
+    # DCC not found
+    if dcc is None:
+        return _dcc_not_found_response(dcc_name)
+
+    # DCC found
+
+    # get path to subprojects of DCC
+    def get_proj_path():
+        p_root = helper.builder.CFDE.project_root.alias('p_root')
+        p = helper.builder.CFDE.project.alias('p')
+        pipt = helper.builder.CFDE.project_in_project_transitive.alias('pipt')
+        path = p_root.link(p).filter(p.abbreviation == dcc_name)
+        proj_path = path.link(pipt, on= ((p_root.project_id_namespace == pipt.leader_project_id_namespace)
+                                    & (p_root.project_local_id == pipt.leader_project_local_id )))
+        return proj_path
+
+    # path to single DCC's subjects
+    def get_subj_path():
+        proj_path = get_proj_path()
+        s = helper.builder.CFDE.subject.alias('s')
+        subj_path = proj_path.link(s, on= ((proj_path.pipt.member_project_id_namespace == s.project_id_namespace)
+                                           & (proj_path.pipt.member_project_local_id == s.project_local_id )))
+        return subj_path
+
+    # path to single DCC's biosamples
+    def get_biosample_path():
+        proj_path = get_proj_path()
+        b = helper.builder.CFDE.biosample.alias('b')
+        biosample_path = proj_path.link(b, on= ((proj_path.pipt.member_project_id_namespace == b.project_id_namespace)
+                                                & (proj_path.pipt.member_project_local_id == b.project_local_id )))
+        return biosample_path
+
+    # path to single DCC's files
+    def get_file_path():
+        proj_path = get_proj_path()
+        f = helper.builder.CFDE.file.alias('f')
+        file_path = proj_path.link(f, on= ((proj_path.pipt.member_project_id_namespace == f.project_id_namespace)
+                                           & (proj_path.pipt.member_project_local_id == f.project_local_id )))
+        return file_path
+    
+    # subject count
+    sp = get_subj_path()
+    qr = sp.aggregates(CntD(sp.s.RID).alias('num_subjects')).fetch()
+    res['subject_count'] = qr[0]['num_subjects']
+    
+    # subjects linked to biosamples
+    bs = helper.builder.CFDE.biosample_from_subject
+    sp = get_subj_path().link(bs)
+    qr = sp.aggregates(CntD(sp.s.RID).alias('num_subjects_with_biosamples')).fetch()
+    res['subject_with_biosample_count'] = qr[0]['num_subjects_with_biosamples']
+
+    # subjects linked to files
+    fs = helper.builder.CFDE.file_describes_subject
+    sp = get_subj_path().link(fs)
+    qr = sp.aggregates(CntD(sp.s.RID).alias('num_subjects_with_files')).fetch()
+    res['subject_with_file_count'] = qr[0]['num_subjects_with_files']
+
+    # biosample count
+    bp = get_biosample_path()
+    qr = bp.aggregates(CntD(bp.b.RID).alias('num_biosamples')).fetch()
+    res['biosample_count'] = qr[0]['num_biosamples']
+        
+    # biosamples linked to subjects
+    bp = get_biosample_path().link(bs)
+    qr = bp.aggregates(CntD(bp.b.RID).alias('num_biosamples_with_subjects')).fetch()
+    res['biosample_with_subject_count'] = qr[0]['num_biosamples_with_subjects']
+
+    # biosamples about which files were produced
+    fb = helper.builder.CFDE.file_describes_biosample
+    bp = get_biosample_path().link(fb)
+    qr = bp.aggregates(CntD(bp.b.RID).alias('num_biosamples_with_files')).fetch()
+    res['biosample_with_file_count'] = qr[0]['num_biosamples_with_files']
+
+    # file count
+    fp = get_file_path()
+    qr = fp.aggregates(CntD(fp.f.RID).alias('num_files')).fetch()
+    res['file_count'] = qr[0]['num_files']
+
+    # files describing subjects
+    fs = helper.builder.CFDE.file_describes_subject
+    sp = get_file_path().link(fs)
+    qr = sp.aggregates(CntD(sp.f.RID).alias('num_files_with_subjects')).fetch()
+    res['file_with_subject_count'] = qr[0]['num_files_with_subjects']
+    
+    # files describing biosamples
+    fb = helper.builder.CFDE.file_describes_biosample
+    sp = get_file_path().link(fb)
+    qr = sp.aggregates(CntD(sp.f.RID).alias('num_files_with_biosamples')).fetch()
+    res['file_with_biosample_count'] = qr[0]['num_files_with_biosamples']
 
     return json.dumps(res)
 
