@@ -8,6 +8,7 @@ from deriva.core.datapath import Min, Max, Cnt, CntD, Avg, Sum, Bin
 
 app = Flask(__name__)
 app.debug = True
+show_nulls = True
 
 hostname = os.getenv('DERIVA_SERVERNAME')
 catalogid = os.getenv('DERIVA_CATALOGID')
@@ -76,7 +77,6 @@ def dcc_list():
 @app.route('/dcc/<string:dcc_name>', methods=['GET'])
 def dcc_info(dcc_name):
     dcc = _abbreviation_to_dcc(dcc_name)
-
     # DCC not found
     if dcc is None:
         return _dcc_not_found_response(dcc_name)
@@ -85,23 +85,23 @@ def dcc_info(dcc_name):
 
     # file count
     file_count = 0
-    fcounts = list(StatsQuery(helper).entity('file').dimension('data_type').dimension('project_root').fetch()),
-    for fc in fcounts[0]:
-        if fc['project_RID'] == dcc['RID']:
+    fcounts = list(StatsQuery(helper).entity('file').dimension('data_type', show_nulls=show_nulls).dimension('project_root', show_nulls=show_nulls).fetch())
+    for fc in fcounts:
+        if (fc['project_RID'] == dcc['RID']) and (fc['num_files'] is not None):
             file_count += fc['num_files']
 
     # subject count
     subject_count = 0
-    scounts = list(StatsQuery(helper).entity('subject').dimension('data_type').dimension('project_root').fetch()),
-    for sc in scounts[0]:
-        if sc['project_RID'] == dcc['RID']:
+    scounts = list(StatsQuery(helper).entity('subject').dimension('data_type', show_nulls=show_nulls).dimension('project_root', show_nulls=show_nulls).fetch())
+    for sc in scounts:
+        if (sc['project_RID'] == dcc['RID']) and (sc['num_subjects'] is not None):
             subject_count += sc['num_subjects']
 
     # biosample count
     biosample_count = 0
-    bcounts = list(StatsQuery(helper).entity('biosample').dimension('data_type').dimension('project_root').fetch()),
-    for bc in bcounts[0]:
-        if bc['project_RID'] == dcc['RID']:
+    bcounts = list(StatsQuery(helper).entity('biosample').dimension('data_type', show_nulls=show_nulls).dimension('project_root', show_nulls=show_nulls).fetch())
+    for bc in bcounts:
+        if (bc['project_RID'] == dcc['RID']) and (bc['num_biosamples'] is not None):
             biosample_count += bc['num_biosamples']
 
     # look for something resembling a DCC URL
@@ -159,14 +159,11 @@ def dcc_filecount(dcc_name):
     if dcc is None:
         return _dcc_not_found_response(dcc_name)
 
-#    fcounts = list(StatsQuery(helper).entity('file').dimension('project_root').fetch()),
-#    print("fcounts=" + str(fcounts))
-    
     # DCC found
-    fcounts = list(StatsQuery(helper).entity('file').dimension('data_type').dimension('project_root').fetch()),
+    fcounts = list(StatsQuery(helper).entity('file').dimension('data_type',show_nulls=show_nulls).dimension('project_root',show_nulls=show_nulls).fetch())
     res = {}
 
-    for fc in fcounts[0]:
+    for fc in fcounts:
         if fc['project_RID'] == dcc['RID']:
             res[fc['data_type_name']] = fc['num_files']
 
@@ -312,7 +309,7 @@ def dcc_grouped_stats(dcc_name,variable,grouping):
 
     vm = VARIABLE_MAP[variable]
     gm = GROUPING_MAP[grouping]
-    counts = list(StatsQuery(helper).entity(vm['entity']).dimension(gm['dimension']).dimension('project_root').fetch())   
+    counts = list(StatsQuery(helper).entity(vm['entity']).dimension(gm['dimension'],show_nulls=show_nulls).dimension('project_root',show_nulls=show_nulls).fetch())   
     res = {}
     
     for ct in counts:
@@ -335,7 +332,7 @@ def _grouped_stats_aux(variable,grouping1,max_groups1,grouping2,max_groups2):
     gm1 = GROUPING_MAP[grouping1]
     gm2 = GROUPING_MAP[grouping2]
     
-    counts = list(StatsQuery(helper).entity(vm['entity']).dimension(gm1['dimension']).dimension(gm2['dimension']).fetch())   
+    counts = list(StatsQuery(helper).entity(vm['entity']).dimension(gm1['dimension'],show_nulls=show_nulls).dimension(gm2['dimension'],show_nulls=show_nulls).fetch())   
 
     dim1_counts = {}
     res = []
@@ -497,7 +494,7 @@ def _merge_groups(groups, max_groups, grouping1):
         # add group to last group
         else:
             for k in group:
-                if re.match(r'^(anatomy|data_type|assay_type|species|dcc)$', k):
+                if k == grouping1:
                     last_group[k] = 'other'
                 else:
                     if k in last_group:
