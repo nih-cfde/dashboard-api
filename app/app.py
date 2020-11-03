@@ -149,6 +149,17 @@ def dcc_projects(dcc_name):
 
     return json.dumps(res)
 
+# retrieve entity count from StatsQuery response, replacing 'null' keys with 'unknown'
+# and null counts with zero
+def _get_stats_name_and_count(row, key_att, count_att):
+    name = row[key_att]
+    count = row[count_att]
+    if (name is None) or (name == 'null'):
+        name = 'unknown'
+    if count is None:
+        count = 0
+    return {'name': name, 'count': count}
+        
 # /dcc/{dccName}/filecount
 # Returns the number of files associated with a particular DCC broken down by data type.
 @app.route('/dcc/<string:dcc_name>/filecount', methods=['GET'])
@@ -165,7 +176,8 @@ def dcc_filecount(dcc_name):
 
     for fc in fcounts:
         if fc['project_RID'] == dcc['RID']:
-            res[fc['data_type_name']] = fc['num_files']
+            nc = _get_stats_name_and_count(fc, 'data_type_name', 'num_files')
+            res[nc['name']] = nc['count']
 
     return json.dumps(res)
 
@@ -314,7 +326,8 @@ def dcc_grouped_stats(dcc_name,variable,grouping):
     
     for ct in counts:
         if ct['project_RID'] == dcc['RID']:
-            res[ct[gm['att']]] = ct[vm['att']]
+            nc = _get_stats_name_and_count(ct, gm['att'], vm['att'])
+            res[nc['name']] = nc['count']
 
     # return type is DCCGrouping
     return json.dumps(res)
@@ -345,6 +358,11 @@ def _grouped_stats_aux(variable,grouping1,max_groups1,grouping2,max_groups2):
         dim1 = ct[gm1['att']]
         dim2 = ct[gm2['att']]
 
+        if dim1 is None:
+            dim1 = 'unknown'
+        if dim2 is None:
+            dim2 = 'unknown'
+        
         # map RID to abbreviation if needed
         if (grouping1 == "dcc"):
             dim1 = rid_to_abbrev[dim1]
@@ -363,7 +381,6 @@ def _grouped_stats_aux(variable,grouping1,max_groups1,grouping2,max_groups2):
 
     return res
         
-# TODO - add these calls to Swagger API. Can't support dashboard without them.
 # TODO - factor out parameter error-checking code
 
 # /dcc/stats/{variable}/{grouping}
