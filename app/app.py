@@ -86,12 +86,26 @@ def dcc_info(dcc_name):
     # subject, file, and biosample counts
     counts = _get_dcc_entity_counts(dcc_name, { 'subject': True, 'file': True, 'biosample': True })
 
-    # look for something resembling a DCC URL
-    url = None
-    for att in ['persistent_id', 'id_namespace']:
-        if (dcc[att] is not None) and re.search(r'^http', dcc[att]):
-            url = dcc[att]
-            break
+    dcc_url = None
+    
+    # primary DCC contact
+    p_root = helper.builder.CFDE.project_root.alias('p_root')
+    p = helper.builder.CFDE.project.alias('p')
+    path = p_root.link(p).filter(p.abbreviation == dcc_name)
+    pdc = helper.builder.CFDE.primary_dcc_contact.alias('pdc')
+    path = path.link(pdc)
+    res = path.entities().fetch()
+
+    # TODO - include dcc contact info in summary API endpoint?
+    if len(res) == 1:
+        dcc_url = res[0]['dcc_url']
+        
+    # otherwise look for something resembling a DCC URL in the project
+    if dcc_url is None:
+        for att in ['persistent_id', 'id_namespace']:
+            if (dcc[att] is not None) and re.search(r'^http', dcc[att]):
+                dcc_url = dcc[att]
+                break
             
     return json.dumps({
         'moniker': dcc['abbreviation'],
@@ -99,7 +113,7 @@ def dcc_info(dcc_name):
         'description': dcc['description'],
         # TODO - current schema has primary_dcc_contact, but no info on PIs
         'principal_investigators': [],
-        'url': url,
+        'url': dcc_url,
         'subject_count': counts['subject_count'],
         'biosample_count': counts['biosample_count'],
         'file_count': counts['file_count'],
