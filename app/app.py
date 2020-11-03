@@ -83,29 +83,10 @@ def dcc_info(dcc_name):
 
     # DCC found
 
-    # file count
-    file_count = 0
-    fcounts = list(StatsQuery(helper).entity('file').dimension('data_type', show_nulls=show_nulls).dimension('project_root', show_nulls=show_nulls).fetch())
-    for fc in fcounts:
-        if (fc['project_RID'] == dcc['RID']) and (fc['num_files'] is not None):
-            file_count += fc['num_files']
-
-    # subject count
-    subject_count = 0
-    scounts = list(StatsQuery(helper).entity('subject').dimension('data_type', show_nulls=show_nulls).dimension('project_root', show_nulls=show_nulls).fetch())
-    for sc in scounts:
-        if (sc['project_RID'] == dcc['RID']) and (sc['num_subjects'] is not None):
-            subject_count += sc['num_subjects']
-
-    # biosample count
-    biosample_count = 0
-    bcounts = list(StatsQuery(helper).entity('biosample').dimension('data_type', show_nulls=show_nulls).dimension('project_root', show_nulls=show_nulls).fetch())
-    for bc in bcounts:
-        if (bc['project_RID'] == dcc['RID']) and (bc['num_biosamples'] is not None):
-            biosample_count += bc['num_biosamples']
+    # subject, file, and biosample counts
+    counts = _get_dcc_entity_counts(dcc_name, { 'subject': True, 'file': True, 'biosample': True })
 
     # look for something resembling a DCC URL
-    # TODO - is there a field/table that's guaranteed to contain this information?
     url = None
     for att in ['persistent_id', 'id_namespace']:
         if (dcc[att] is not None) and re.search(r'^http', dcc[att]):
@@ -119,9 +100,9 @@ def dcc_info(dcc_name):
         # TODO - current schema has primary_dcc_contact, but no info on PIs
         'principal_investigators': [],
         'url': url,
-        'subject_count': subject_count,
-        'biosample_count': biosample_count,
-        'file_count': file_count,
+        'subject_count': counts['subject_count'],
+        'biosample_count': counts['biosample_count'],
+        'file_count': counts['file_count'],
         'last_updated': dcc['RMT'],
     })
 
@@ -181,19 +162,9 @@ def dcc_filecount(dcc_name):
 
     return json.dumps(res)
 
-# /dcc/{dccName}/linkcount
-# Returns the number of linked entities for various combinations.
-@app.route('/dcc/<string:dcc_name>/linkcount', methods=['GET'])
-def dcc_linkscount(dcc_name):
+def _get_dcc_entity_counts(dcc_name, counts):
     res = {}
-    dcc = _abbreviation_to_dcc(dcc_name)
-
-    # DCC not found
-    if dcc is None:
-        return _dcc_not_found_response(dcc_name)
-
-    # DCC found
-
+    
     # get path to subprojects of DCC
     def get_proj_path():
         p_root = helper.builder.CFDE.project_root.alias('p_root')
@@ -229,55 +200,79 @@ def dcc_linkscount(dcc_name):
         return file_path
     
     # subject count
-    sp = get_subj_path()
-    qr = sp.aggregates(CntD(sp.s.RID).alias('num_subjects')).fetch()
-    res['subject_count'] = qr[0]['num_subjects']
+    if (counts is None) or ('subject' in counts):
+        sp = get_subj_path()
+        qr = sp.aggregates(CntD(sp.s.RID).alias('num_subjects')).fetch()
+        res['subject_count'] = qr[0]['num_subjects']
     
     # subjects linked to biosamples
-    bs = helper.builder.CFDE.biosample_from_subject
-    sp = get_subj_path().link(bs)
-    qr = sp.aggregates(CntD(sp.s.RID).alias('num_subjects_with_biosamples')).fetch()
-    res['subject_with_biosample_count'] = qr[0]['num_subjects_with_biosamples']
+    if (counts is None) or ('subject_with_biosample' in counts):
+        bs = helper.builder.CFDE.biosample_from_subject
+        sp = get_subj_path().link(bs)
+        qr = sp.aggregates(CntD(sp.s.RID).alias('num_subjects_with_biosamples')).fetch()
+        res['subject_with_biosample_count'] = qr[0]['num_subjects_with_biosamples']
 
     # subjects linked to files
-    fs = helper.builder.CFDE.file_describes_subject
-    sp = get_subj_path().link(fs)
-    qr = sp.aggregates(CntD(sp.s.RID).alias('num_subjects_with_files')).fetch()
-    res['subject_with_file_count'] = qr[0]['num_subjects_with_files']
+    if (counts is None) or ('subject_with_file' in counts):
+        fs = helper.builder.CFDE.file_describes_subject
+        sp = get_subj_path().link(fs)
+        qr = sp.aggregates(CntD(sp.s.RID).alias('num_subjects_with_files')).fetch()
+        res['subject_with_file_count'] = qr[0]['num_subjects_with_files']
 
     # biosample count
-    bp = get_biosample_path()
-    qr = bp.aggregates(CntD(bp.b.RID).alias('num_biosamples')).fetch()
-    res['biosample_count'] = qr[0]['num_biosamples']
+    if (counts is None) or ('biosample' in counts):
+        bp = get_biosample_path()
+        qr = bp.aggregates(CntD(bp.b.RID).alias('num_biosamples')).fetch()
+        res['biosample_count'] = qr[0]['num_biosamples']
         
     # biosamples linked to subjects
-    bp = get_biosample_path().link(bs)
-    qr = bp.aggregates(CntD(bp.b.RID).alias('num_biosamples_with_subjects')).fetch()
-    res['biosample_with_subject_count'] = qr[0]['num_biosamples_with_subjects']
+    if (counts is None) or ('biosample_with_subject' in counts):
+        bp = get_biosample_path().link(bs)
+        qr = bp.aggregates(CntD(bp.b.RID).alias('num_biosamples_with_subjects')).fetch()
+        res['biosample_with_subject_count'] = qr[0]['num_biosamples_with_subjects']
 
     # biosamples about which files were produced
-    fb = helper.builder.CFDE.file_describes_biosample
-    bp = get_biosample_path().link(fb)
-    qr = bp.aggregates(CntD(bp.b.RID).alias('num_biosamples_with_files')).fetch()
-    res['biosample_with_file_count'] = qr[0]['num_biosamples_with_files']
-
+    if (counts is None) or ('biosample_with_file' in counts):
+        fb = helper.builder.CFDE.file_describes_biosample
+        bp = get_biosample_path().link(fb)
+        qr = bp.aggregates(CntD(bp.b.RID).alias('num_biosamples_with_files')).fetch()
+        res['biosample_with_file_count'] = qr[0]['num_biosamples_with_files']
+        
     # file count
-    fp = get_file_path()
-    qr = fp.aggregates(CntD(fp.f.RID).alias('num_files')).fetch()
-    res['file_count'] = qr[0]['num_files']
+    if (counts is None) or ('file' in counts):
+        fp = get_file_path()
+        qr = fp.aggregates(CntD(fp.f.RID).alias('num_files')).fetch()
+        res['file_count'] = qr[0]['num_files']
 
     # files describing subjects
-    fs = helper.builder.CFDE.file_describes_subject
-    sp = get_file_path().link(fs)
-    qr = sp.aggregates(CntD(sp.f.RID).alias('num_files_with_subjects')).fetch()
-    res['file_with_subject_count'] = qr[0]['num_files_with_subjects']
+    if (counts is None) or ('file_with_subject' in counts):
+        fs = helper.builder.CFDE.file_describes_subject
+        sp = get_file_path().link(fs)
+        qr = sp.aggregates(CntD(sp.f.RID).alias('num_files_with_subjects')).fetch()
+        res['file_with_subject_count'] = qr[0]['num_files_with_subjects']
     
     # files describing biosamples
-    fb = helper.builder.CFDE.file_describes_biosample
-    sp = get_file_path().link(fb)
-    qr = sp.aggregates(CntD(sp.f.RID).alias('num_files_with_biosamples')).fetch()
-    res['file_with_biosample_count'] = qr[0]['num_files_with_biosamples']
+    if (counts is None) or ('file_with_biosample' in counts):
+        fb = helper.builder.CFDE.file_describes_biosample
+        sp = get_file_path().link(fb)
+        qr = sp.aggregates(CntD(sp.f.RID).alias('num_files_with_biosamples')).fetch()
+        res['file_with_biosample_count'] = qr[0]['num_files_with_biosamples']
 
+    return res
+
+# /dcc/{dccName}/linkcount
+# Returns the number of linked entities for various combinations.
+@app.route('/dcc/<string:dcc_name>/linkcount', methods=['GET'])
+def dcc_linkscount(dcc_name):
+    res = {}
+    dcc = _abbreviation_to_dcc(dcc_name)
+
+    # DCC not found
+    if dcc is None:
+        return _dcc_not_found_response(dcc_name)
+
+    # DCC found
+    res = _get_dcc_entity_counts(dcc_name, None)
     return json.dumps(res)
 
 # parameterization for dcc_grouped_stats
