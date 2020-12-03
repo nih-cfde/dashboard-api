@@ -1,11 +1,11 @@
 openapi: 3.0.1
 info:
   title: CFDE Dashboard API
-  description: A proposed specification for the CFDE Dashboard project metadata API.
+  description: Specification for the CFDE Dashboard project metadata API.
   license:
     name: Apache 2.0
     url: http://www.apache.org/licenses/LICENSE-2.0.html
-  version: 0.0.1
+  version: 0.0.2
 tags:
    - name: "DCC"
      description: "Get information about a single specific DCC."
@@ -14,10 +14,17 @@ tags:
 paths:
   /dcc:
     get:
-      summary: Returns a listing of the DCCs that have data available in the archive.
+      summary: Returns a listing of the DCCs that have data available.
       description: For users to access other endpoints in the API, a listing of the DCC (Data Coordination Center) monikers that exist is necessary, as other methods require the DCC name as a URL parameter.
       tags:
       - DCC
+      parameters:
+      - name: catalogId
+        in: query
+        description: DERIVA catalog ID of the catalog from which the requested data should be retrieved.
+        required: false
+        schema:
+          type: integer
     responses:
         200:
           description: Successful operation.
@@ -38,6 +45,12 @@ paths:
       tags:
       - DCC
       parameters:
+      - name: catalogId
+        in: query
+        description: DERIVA catalog ID of the catalog from which the requested data should be retrieved.
+        required: false
+        schema:
+          type: integer
       - name: dccName
         in: path
         description: The DCC moniker for which general information is requested.
@@ -66,6 +79,12 @@ paths:
       tags:
       - DCC
       parameters:
+      - name: catalogId
+        in: query
+        description: DERIVA catalog ID of the catalog from which the requested data should be retrieved.
+        required: false
+        schema:
+          type: integer
       - name: dccName
         in: path
         description: The DCC moniker for which the project listing is requested.
@@ -94,6 +113,12 @@ paths:
       tags:
       - DCC
       parameters:
+      - name: catalogId
+        in: query
+        description: DERIVA catalog ID of the catalog from which the requested data should be retrieved.
+        required: false
+        schema:
+          type: integer
       - name: dccName
         in: path
         description: The DCC moniker for which file counts are requested.
@@ -122,6 +147,12 @@ paths:
       tags:
       - DCC
       parameters:
+      - name: catalogId
+        in: query
+        description: DERIVA catalog ID of the catalog from which the requested data should be retrieved.
+        required: false
+        schema:
+          type: integer
       - name: dccName
         in: path
         description: The DCC moniker for which linked entity counts are requested.
@@ -150,6 +181,12 @@ paths:
       tags:
       - DCC
       parameters:
+      - name: catalogId
+        in: query
+        description: DERIVA catalog ID of the catalog from which the requested data should be retrieved.
+        required: false
+        schema:
+          type: integer
       - name: dccName
         in: path
         description: The DCC moniker for which file counts are requested.
@@ -190,6 +227,12 @@ paths:
       tags:
       - Stats
       parameters:
+      - name: catalogId
+        in: query
+        description: DERIVA catalog ID of the catalog from which the requested data should be retrieved.
+        required: false
+        schema:
+          type: integer
       - name: variable
         in: path
         description: One of "files", "volume", "samples" and "subjects".
@@ -230,6 +273,12 @@ paths:
       tags:
       - Stats
       parameters:
+      - name: catalogId
+        in: query
+        description: DERIVA catalog ID of the catalog from which the requested data should be retrieved.
+        required: false
+        schema:
+          type: integer
       - name: variable
         in: path
         description: One of "files", "volume", "samples" and "subjects".
