@@ -32,6 +32,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DCCListingResponse'
+        404:
+          description: The specified DERIVA catalog could not be found.
         5XX:
           description: An unexpected error occurred.
           headers:
@@ -65,7 +67,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DCCGeneralInfo'
         404:
-          description: A DCC with the specified name was not found.
+          description: The specified DERIVA catalog or named DCC could not be found.
         5XX:
           description: An unexpected error occurred.
           headers:
@@ -99,7 +101,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DCCProjectListingResponse'
         404:
-          description: A DCC with the specified name was not found.
+          description: The specified DERIVA catalog or named DCC could not be found.
         5XX:
           description: An unexpected error occurred.
           headers:
@@ -133,7 +135,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DCCFileCountResponse'
         404:
-          description: A DCC with the specified moniker was not found.
+          description: The specified DERIVA catalog or named DCC could not be found.
         5XX:
           description: An unexpected error occurred.
           headers:
@@ -167,7 +169,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DCCLinkCountResponse'
         404:
-          description: A DCC with the specified moniker was not found.
+          description: The specified DERIVA catalog or named DCC could not be found.
         5XX:
           description: An unexpected error occurred.
           headers:
@@ -213,7 +215,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DCCGrouping'
         404:
-          description: A DCC with the specified moniker was not found, or invalid variable or grouping.
+          description: The specified DERIVA catalog or named DCC could not be found, or the variable or grouping was invalid.
         5XX:
           description: An unexpected error occurred.
           headers:
@@ -259,7 +261,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DCCGroupedStatistics'
         404:
-          description: Invalid variable or grouping(s).
+          description: The specified DERIVA catalog could not be found, or the variable or grouping was invalid.
         5XX:
           description: An unexpected error occurred.
           headers:
@@ -317,7 +319,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DCCGroupedStatistics'
         404:
-          description: Invalid variable or grouping(s).
+          description: The specified DERIVA catalog could not be found, or the variable or grouping was invalid.
         5XX:
           description: An unexpected error occurred.
           headers:
