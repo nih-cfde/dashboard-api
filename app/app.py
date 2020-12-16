@@ -4,11 +4,19 @@ import re
 import requests.exceptions
 import sys
 from flask import Flask, url_for, redirect, request, make_response, wrappers
+from flask_cors import CORS, cross_origin
 from os import path
 from cfde_deriva.dashboard_queries import StatsQuery, DashboardQueryHelper
 from deriva.core.datapath import Min, Max, Cnt, CntD, Avg, Sum, Bin
 
+# allowed CORS origins
+origin_regex_str = os.getenv('CORS_ORIGIN_REGEX')
+if origin_regex_str is None:
+    origin_regex_str = 'http://localhost'
+origin_regex = re.compile(origin_regex_str)
+
 app = Flask(__name__)
+cors = CORS(app, resources={r'.*': {'origins': origin_regex}})
 app.debug = True
 show_nulls = True
 
