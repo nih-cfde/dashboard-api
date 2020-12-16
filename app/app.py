@@ -1,7 +1,9 @@
 import json
 import os
 import re
-from flask import Flask, url_for, redirect, request, make_response
+import requests.exceptions
+import sys
+from flask import Flask, url_for, redirect, request, make_response, wrappers
 from os import path
 from cfde_deriva.dashboard_queries import StatsQuery, DashboardQueryHelper
 from deriva.core.datapath import Min, Max, Cnt, CntD, Avg, Sum, Bin
@@ -11,7 +13,7 @@ app.debug = True
 show_nulls = True
 
 hostname = os.getenv('DERIVA_SERVERNAME')
-catalogid = os.getenv('DERIVA_CATALOGID')
+default_catalog_id = os.getenv('DERIVA_DEFAULT_CATALOGID')
 
 legal_vars = ['files','volume','samples','subjects'];
 legal_vars_re = re.compile('^(' + "|".join(legal_vars) + ')$')
@@ -23,21 +25,47 @@ legal_groups_re = re.compile('^(' + "|".join(legal_groups) + ')$')
 legal_groups_dcc = ['data_type','assay','species','anatomy','dcc'];
 legal_groups_dcc_re = re.compile('^(' + "|".join(legal_groups_dcc) + ')$')
 
-helper = DashboardQueryHelper(hostname, catalogid)
+helpers = {}
 
 def _error_response(err, code):
     res = make_response(err, code)
     res.headers['X-CFDE-Error'] = err
     return res
 
+def _catalog_not_found_response(catalog_id):
+    return _error_response("DERIVA catalogId " + str(catalog_id) + " not found", 404)
+
 def _dcc_not_found_response(dcc_name):
-    return _error_response("Named DCC not found", 404)
+    return _error_response("DCC '" + dcc_name + "' not found", 404)
 
-def _abbreviation_to_dcc(dcc_name):
+# Retrieve DashboardQueryHelper for the specified catalogid, using default catalogid if None.
+#
+def _get_helper(catalog_id):
+    if catalog_id is None:
+        catalog_id = default_catalog_id
+
+    if catalog_id not in helpers:
+        err = None
+        try:
+            helpers[catalog_id] = DashboardQueryHelper(hostname, catalog_id)
+        # invalid catalog id
+        except requests.exceptions.HTTPError as e:
+            err = e
+            # don't cache the result, because the catalog in question could be created in future
+            if re.match(r'.*The requested catalog \S+ could not be found.*', str(e.response.content)):
+                return _catalog_not_found_response(catalog_id)    
+        except Exception as e:
+            err = e
+
+        # all other cfde-deriva errors
+        if err is not None:
+            return _error_response(str(err), 500)
+        
+    return helpers[catalog_id]
+
+def _abbreviation_to_dcc(helper, dcc_name):
     # helper.list_projects removes attributes from project and also performs an additional
-    # join to compute num_subprojects, which we don't need
-#    dccs = list(helper.list_projects(use_root_projects=True))
-
+    # join to compute num_subprojects, which we don't need, so we perform a
     # direct query by DCC abbreviation with no additional joins
     p_root = helper.builder.CFDE.project_root.alias('p_root')
     p = helper.builder.CFDE.project.alias('p')
@@ -57,6 +85,11 @@ def _abbreviation_to_dcc(dcc_name):
 # Returns a listing of the DCCs that have data available in the archive.
 @app.route('/dcc', methods=['GET'])
 def dcc_list():
+    catalog_id = request.args.get("catalogId", type=int)
+    helper = _get_helper(catalog_id)
+    if isinstance(helper, wrappers.Response):
+        return helper
+    
     dccs = list(helper.list_projects(use_root_projects=True))
     dcc_abbrevs = [ dcc['abbreviation'] for dcc in dccs ]
     return json.dumps(dcc_abbrevs)
@@ -76,7 +109,12 @@ def dcc_list():
 #
 @app.route('/dcc/<string:dcc_name>', methods=['GET'])
 def dcc_info(dcc_name):
-    dcc = _abbreviation_to_dcc(dcc_name)
+    catalog_id = request.args.get("catalogId", type=int)
+    helper = _get_helper(catalog_id)
+    if isinstance(helper, wrappers.Response):
+        return helper
+
+    dcc = _abbreviation_to_dcc(helper, dcc_name)
     # DCC not found
     if dcc is None:
         return _dcc_not_found_response(dcc_name)
@@ -84,7 +122,7 @@ def dcc_info(dcc_name):
     # DCC found
 
     # subject, file, and biosample counts
-    counts = _get_dcc_entity_counts(dcc_name, { 'subject': True, 'file': True, 'biosample': True })
+    counts = _get_dcc_entity_counts(helper, dcc_name, { 'subject': True, 'file': True, 'biosample': True })
 
     dcc_url = None
     
@@ -124,7 +162,12 @@ def dcc_info(dcc_name):
 # Returns a listing of (top-level) projects associated with the specified DCC.
 @app.route('/dcc/<string:dcc_name>/projects', methods=['GET'])
 def dcc_projects(dcc_name):
-    dcc = _abbreviation_to_dcc(dcc_name)
+    catalog_id = request.args.get("catalogId", type=int)
+    helper = _get_helper(catalog_id)
+    if isinstance(helper, wrappers.Response):
+        return helper
+    
+    dcc = _abbreviation_to_dcc(helper, dcc_name)
 
     # DCC not found
     if dcc is None:
@@ -159,7 +202,12 @@ def _get_stats_name_and_count(row, key_att, count_att):
 # Returns the number of files associated with a particular DCC broken down by data type.
 @app.route('/dcc/<string:dcc_name>/filecount', methods=['GET'])
 def dcc_filecount(dcc_name):
-    dcc = _abbreviation_to_dcc(dcc_name)
+    catalog_id = request.args.get("catalogId", type=int)
+    helper = _get_helper(catalog_id)
+    if isinstance(helper, wrappers.Response):
+        return helper
+    
+    dcc = _abbreviation_to_dcc(helper, dcc_name)
 
     # DCC not found
     if dcc is None:
@@ -176,7 +224,7 @@ def dcc_filecount(dcc_name):
 
     return json.dumps(res)
 
-def _get_dcc_entity_counts(dcc_name, counts):
+def _get_dcc_entity_counts(helper, dcc_name, counts):
     res = {}
     
     # get path to subprojects of DCC
@@ -278,15 +326,19 @@ def _get_dcc_entity_counts(dcc_name, counts):
 # Returns the number of linked entities for various combinations.
 @app.route('/dcc/<string:dcc_name>/linkcount', methods=['GET'])
 def dcc_linkscount(dcc_name):
-    res = {}
-    dcc = _abbreviation_to_dcc(dcc_name)
+    catalog_id = request.args.get("catalogId", type=int)
+    helper = _get_helper(catalog_id)
+    if isinstance(helper, wrappers.Response):
+        return helper
+
+    dcc = _abbreviation_to_dcc(helper, dcc_name)
 
     # DCC not found
     if dcc is None:
         return _dcc_not_found_response(dcc_name)
 
     # DCC found
-    res = _get_dcc_entity_counts(dcc_name, None)
+    res = _get_dcc_entity_counts(helper, dcc_name, None)
     return json.dumps(res)
 
 # parameterization for dcc_grouped_stats
@@ -308,6 +360,11 @@ GROUPING_MAP = {
 # Returns statistics for the requested variable grouped by the specified aggregation.
 @app.route('/dcc/<string:dcc_name>/stats/<string:variable>/<string:grouping>', methods=['GET'])
 def dcc_grouped_stats(dcc_name,variable,grouping):
+    catalog_id = request.args.get("catalogId", type=int)
+    helper = _get_helper(catalog_id)
+    if isinstance(helper, wrappers.Response):
+        return helper
+
     err = None
 
     #  check that variable is one of 'files', 'volume', 'samples', 'subjects'
@@ -322,7 +379,7 @@ def dcc_grouped_stats(dcc_name,variable,grouping):
     if err is not None:
         return _error_response(err, 404)
 
-    dcc = _abbreviation_to_dcc(dcc_name)
+    dcc = _abbreviation_to_dcc(helper, dcc_name)
 
     # DCC not found
     if dcc is None:
@@ -341,7 +398,7 @@ def dcc_grouped_stats(dcc_name,variable,grouping):
     # return type is DCCGrouping
     return json.dumps(res)
 
-def _grouped_stats_aux(variable,grouping1,max_groups1,grouping2,max_groups2):
+def _grouped_stats_aux(helper,variable,grouping1,max_groups1,grouping2,max_groups2):
 
     # need to map project_RID to project_abbreviation if grouping=dcc
     rid_to_abbrev = {}
@@ -396,6 +453,11 @@ def _grouped_stats_aux(variable,grouping1,max_groups1,grouping2,max_groups2):
 # Returns statistics for the requested variable grouped by the specified aggregation.
 @app.route('/stats/<string:variable>/<string:grouping1>/<string:grouping2>', methods=['GET'])
 def grouped_stats(variable,grouping1,grouping2):
+    catalog_id = request.args.get("catalogId", type=int)
+    helper = _get_helper(catalog_id)
+    if isinstance(helper, wrappers.Response):
+        return helper
+
     err = None
 
     #  check that variable is one of 'files', 'volume', 'samples', 'subjects'
@@ -413,7 +475,7 @@ def grouped_stats(variable,grouping1,grouping2):
     if err is not None:
         return _error_response(err, 404)
 
-    res = _grouped_stats_aux(variable, grouping1, None, grouping2, None)
+    res = _grouped_stats_aux(helper, variable, grouping1, None, grouping2, None)
 
     # return type is DCCGroupedStatistics, which is a list of DCCGrouping
     return json.dumps(res)
@@ -540,6 +602,11 @@ def _merge_groups(groups, max_groups, grouping1):
 # called 'other'.
 @app.route('/stats/<string:variable>/<string:grouping1>/<int:maxgroups1>/<string:grouping2>/<int:maxgroups2>', methods=['GET'])
 def grouped_stats_other(variable,grouping1,maxgroups1,grouping2,maxgroups2):
+    catalog_id = request.args.get("catalogId", type=int)
+    helper = _get_helper(catalog_id)
+    if isinstance(helper, wrappers.Response):
+        return helper
+
     err = None
 
     #  check that variable is one of 'files', 'volume', 'samples', 'subjects'
@@ -564,7 +631,7 @@ def grouped_stats_other(variable,grouping1,maxgroups1,grouping2,maxgroups2):
         return _error_response(err, 404)
 
     # returns list of DCCGrouping
-    res = _grouped_stats_aux(variable, grouping1, maxgroups1, grouping2, maxgroups2)
+    res = _grouped_stats_aux(helper, variable, grouping1, maxgroups1, grouping2, maxgroups2)
 
     # merge groups2 (i.e., merge counts within each DCCGrouping)
     if maxgroups2 is not None:
