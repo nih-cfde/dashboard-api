@@ -117,7 +117,9 @@ def all_dcc_info():
     helper = _get_helper(catalog_id)
     if isinstance(helper, wrappers.Response):
         return helper
-
+    if catalog_id is None:
+        catalog_id = default_catalog_id
+    
     num_subjects = 0
     num_biosamples = 0
     num_files = 0
@@ -137,6 +139,7 @@ def all_dcc_info():
         sys.stderr.write("RMT=" + str(dcc['RMT']) + " last_updated=" + str(last_updated) + "\n")
 
     return json.dumps({
+        'catalog_id': catalog_id,
         'subject_count': counts['subject_count'],
         'biosample_count': counts['biosample_count'],
         'file_count': counts['file_count'],

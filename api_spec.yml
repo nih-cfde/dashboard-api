@@ -376,12 +376,15 @@ components:
       type: object
       description: An object with general information about a catalog/set of DCCs.
       required:
+      - catalog_id
       - subject_count
       - biosample_count
       - file_count
       - project_count
       - last_updated
       properties:
+        catalog_id:
+          type: integer
         subject_count:
           type: integer
           minimum: 0
