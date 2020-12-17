@@ -17,7 +17,7 @@ paths:
       summary: Returns a listing of the DCCs that have data available.
       description: For users to access other endpoints in the API, a listing of the DCC (Data Coordination Center) monikers that exist is necessary, as other methods require the DCC name as a URL parameter.
       tags:
-      - DCC
+      - Stats
       parameters:
       - name: catalogId
         in: query
@@ -32,6 +32,35 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DCCListingResponse'
+        404:
+          description: The specified DERIVA catalog could not be found.
+        5XX:
+          description: An unexpected error occurred.
+          headers:
+            X-CFDE-Error:
+              schema:
+                type: string
+              description: Human friendly reason for the error or exception.
+  /dcc_info:
+    get:
+      summary: Returns summary information about the entire catalog.
+      description:  Returns summary information about the entire catalog, including subject, biosample, and project counts.
+      tags:
+      - Stats
+      parameters:
+      - name: catalogId
+        in: query
+        description: DERIVA catalog ID of the catalog from which the requested data should be retrieved.
+        required: false
+        schema:
+          type: integer
+    responses:
+        200:
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogGeneralInfo'
         404:
           description: The specified DERIVA catalog could not be found.
         5XX:
@@ -343,6 +372,31 @@ components:
       description: A list of projects within the DCC.
       items:
         type: string
+    CatalogGeneralInfo:
+      type: object
+      description: An object with general information about a catalog/set of DCCs.
+      required:
+      - subject_count
+      - biosample_count
+      - file_count
+      - project_count
+      - last_updated
+      properties:
+        subject_count:
+          type: integer
+          minimum: 0
+        biosample_count:
+          type: integer
+          minimum: 0
+        file_count:
+          type: integer
+          minimum: 0
+        project_count:
+          type: integer
+          minimum: 0
+        last_updated:
+          type: string
+          format: date-time
     DCCGeneralInfo:
       type: object
       description: An object with general information about a DCC.

@@ -84,7 +84,13 @@ def _abbreviation_to_dcc(helper, dcc_name):
         return res[0]
     
     return None
-    
+
+def _all_dccs(helper):
+    p_root = helper.builder.CFDE.project_root.alias('p_root')
+    p = helper.builder.CFDE.project.alias('p')
+    res = p_root.link(p).entities().fetch()
+    return res
+
 # -------------------------------------------------------------------------
 # API methods for https://github.com/nih-cfde/api/blob/master/api_spec.yml
 # -------------------------------------------------------------------------
@@ -101,6 +107,42 @@ def dcc_list():
     dccs = list(helper.list_projects(use_root_projects=True))
     dcc_abbrevs = [ dcc['abbreviation'] for dcc in dccs ]
     return json.dumps(dcc_abbrevs)
+
+# /dcc_info
+# Returns summary info for all DCCs in the archive, similar to /dcc/{dccName} for
+# a single DCC.
+@app.route('/dcc_info', methods=['GET'])
+def all_dcc_info():
+    catalog_id = request.args.get("catalogId", type=int)
+    helper = _get_helper(catalog_id)
+    if isinstance(helper, wrappers.Response):
+        return helper
+
+    num_subjects = 0
+    num_biosamples = 0
+    num_files = 0
+    num_projects = 0
+    last_updated = None
+
+    # subject, file, biosample, and project counts
+    counts = _get_dcc_entity_counts(helper, None, { 'subject': True, 'file': True, 'biosample': True, 'project': True })
+    # all DCCs
+    dccs = _all_dccs(helper)
+    
+    for dcc in dccs:
+        if last_updated is None:
+            last_updated = dcc['RMT']
+        if dcc['RMT'] > last_updated:
+            last_updated = dcc['RMT']
+        sys.stderr.write("RMT=" + str(dcc['RMT']) + " last_updated=" + str(last_updated) + "\n")
+
+    return json.dumps({
+        'subject_count': counts['subject_count'],
+        'biosample_count': counts['biosample_count'],
+        'file_count': counts['file_count'],
+        'project_count': counts['project_count'],
+        'last_updated': last_updated,
+    })
 
 # /dcc/{dccName}
 # Returns general information about the specified DCC, such as the Principal Investigator(s) and description.
@@ -232,20 +274,37 @@ def dcc_filecount(dcc_name):
 
     return json.dumps(res)
 
+# don't filter by DCC if dcc_name is None
 def _get_dcc_entity_counts(helper, dcc_name, counts):
     res = {}
     
-    # get path to subprojects of DCC
+    # get path to all subprojects of DCC
     def get_proj_path():
         p_root = helper.builder.CFDE.project_root.alias('p_root')
         p = helper.builder.CFDE.project.alias('p')
         pipt = helper.builder.CFDE.project_in_project_transitive.alias('pipt')
-        path = p_root.link(p).filter(p.abbreviation == dcc_name)
+        if dcc_name is None:
+            path = p_root.link(p)
+        else:
+            path = p_root.link(p).filter(p.abbreviation == dcc_name)
         proj_path = path.link(pipt, on= ((p_root.project_id_namespace == pipt.leader_project_id_namespace)
                                     & (p_root.project_local_id == pipt.leader_project_local_id )))
         return proj_path
 
-    # path to single DCC's subjects
+    # get path to only top-level subprojects of a root project (i.e., DCC)
+    def get_subproj_path():
+        p_root = helper.builder.CFDE.project_root.alias('p_root')
+        p = helper.builder.CFDE.project.alias('p')
+        pip = helper.builder.CFDE.project_in_project.alias('pip')
+        if dcc_name is None:
+            path = p_root.link(p)
+        else:
+            path = p_root.link(p).filter(p.abbreviation == dcc_name)
+        proj_path = path.link(pip, on= ((p_root.project_id_namespace == pip.parent_project_id_namespace)
+                                    & (p_root.project_local_id == pip.parent_project_local_id )))
+        return proj_path
+
+    # path to DCCs' subjects
     def get_subj_path():
         proj_path = get_proj_path()
         s = helper.builder.CFDE.subject.alias('s')
@@ -253,7 +312,7 @@ def _get_dcc_entity_counts(helper, dcc_name, counts):
                                            & (proj_path.pipt.member_project_local_id == s.project_local_id )))
         return subj_path
 
-    # path to single DCC's biosamples
+    # path to DCCs' biosamples
     def get_biosample_path():
         proj_path = get_proj_path()
         b = helper.builder.CFDE.biosample.alias('b')
@@ -261,14 +320,20 @@ def _get_dcc_entity_counts(helper, dcc_name, counts):
                                                 & (proj_path.pipt.member_project_local_id == b.project_local_id )))
         return biosample_path
 
-    # path to single DCC's files
+    # path to DCCs' files
     def get_file_path():
         proj_path = get_proj_path()
         f = helper.builder.CFDE.file.alias('f')
         file_path = proj_path.link(f, on= ((proj_path.pipt.member_project_id_namespace == f.project_id_namespace)
                                            & (proj_path.pipt.member_project_local_id == f.project_local_id )))
         return file_path
-    
+
+    # subproject count
+    if (counts is None) or ('project' in counts):
+        sp = get_subproj_path()
+        qr = sp.aggregates(CntD(sp.pip.RID).alias('num_projects')).fetch()
+        res['project_count'] = qr[0]['num_projects']
+
     # subject count
     if (counts is None) or ('subject' in counts):
         sp = get_subj_path()
