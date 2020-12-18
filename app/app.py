@@ -136,7 +136,6 @@ def all_dcc_info():
             last_updated = dcc['RMT']
         if dcc['RMT'] > last_updated:
             last_updated = dcc['RMT']
-        sys.stderr.write("RMT=" + str(dcc['RMT']) + " last_updated=" + str(last_updated) + "\n")
 
     return json.dumps({
         'catalog_id': catalog_id,
