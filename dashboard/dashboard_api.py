@@ -61,7 +61,10 @@ def _get_helper(catalog_id):
     if catalog_id not in helpers:
         err = None
         try:
-            helpers[catalog_id] = DashboardQueryHelper(HOSTNAME, catalog_id, caching=False)
+            helpers[catalog_id] = DashboardQueryHelper(HOSTNAME,
+                                                       catalog_id,
+                                                       scheme="http" if HOSTNAME == "localhost" else "https",
+                                                       caching=False)
         # invalid catalog id
         except HTTPError as e:
             err = e
