@@ -50,7 +50,7 @@ def _dcc_not_found_response(dcc_name):
 @app.errorhandler(DataPathException)
 def handle_datapath_exception(error):
     return _error_response(str(error),
-                           error.reason.response.status_code if isinstance(error.reason, HTTPError) else '500')
+                           error.reason.response.status_code if isinstance(error.reason, HTTPError) else 500)
 
 # Retrieve DashboardQueryHelper for the specified catalogid, using default catalogid if None.
 #
