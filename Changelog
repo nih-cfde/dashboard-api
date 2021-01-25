@@ -1,9 +1,7 @@
-1.2
+1.1
+ -Updated to API version 0.0.2
  - Updated deriva-py pathbuilder API calls to pass through request headers for authorization.
  - Added WSGI integration (mod_wsgi)
-
-1.1
- -API version 0.0.2
 
 1.0 (December, 2020)
  -Epic 1 Release from November 2020.
