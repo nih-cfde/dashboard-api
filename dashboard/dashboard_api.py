@@ -4,7 +4,7 @@ import re
 import sys
 import atexit
 from requests.exceptions import HTTPError
-from flask import Flask, request, make_response
+from flask import Flask, request, make_response, wrappers
 from cfde_deriva.dashboard_queries import StatsQuery, DashboardQueryHelper
 from deriva.core import DEFAULT_HEADERS
 from deriva.core.datapath import Min, Max, Cnt, CntD, Avg, Sum, Bin, DataPathException
