@@ -115,6 +115,8 @@ def _all_dccs(helper):
 def dcc_list():
     catalog_id = request.args.get("catalogId", type=int)
     helper = _get_helper(catalog_id)
+    if isinstance(helper, wrappers.Response):
+        return helper
 
     dccs = list(helper.list_projects(use_root_projects=True, headers=pass_headers()))
     dcc_abbrevs = [dcc['abbreviation'] for dcc in dccs]
@@ -127,6 +129,9 @@ def dcc_list():
 def all_dcc_info():
     catalog_id = request.args.get("catalogId", type=int)
     helper = _get_helper(catalog_id)
+    if isinstance(helper, wrappers.Response):
+        return helper
+
     if catalog_id is None:
         catalog_id = DEFAULT_CATALOG_ID
 
@@ -173,6 +178,8 @@ def all_dcc_info():
 def dcc_info(dcc_name):
     catalog_id = request.args.get("catalogId", type=int)
     helper = _get_helper(catalog_id)
+    if isinstance(helper, wrappers.Response):
+        return helper
 
     dcc = _abbreviation_to_dcc(helper, dcc_name)
     # DCC not found
@@ -224,6 +231,8 @@ def dcc_info(dcc_name):
 def dcc_projects(dcc_name):
     catalog_id = request.args.get("catalogId", type=int)
     helper = _get_helper(catalog_id)
+    if isinstance(helper, wrappers.Response):
+        return helper
 
     dcc = _abbreviation_to_dcc(helper, dcc_name)
 
@@ -262,6 +271,8 @@ def _get_stats_name_and_count(row, key_att, count_att):
 def dcc_filecount(dcc_name):
     catalog_id = request.args.get("catalogId", type=int)
     helper = _get_helper(catalog_id)
+    if isinstance(helper, wrappers.Response):
+        return helper
 
     dcc = _abbreviation_to_dcc(helper, dcc_name)
 
@@ -409,6 +420,8 @@ def _get_dcc_entity_counts(helper, dcc_name, counts):
 def dcc_linkscount(dcc_name):
     catalog_id = request.args.get("catalogId", type=int)
     helper = _get_helper(catalog_id)
+    if isinstance(helper, wrappers.Response):
+        return helper
 
     dcc = _abbreviation_to_dcc(helper, dcc_name)
 
@@ -441,6 +454,8 @@ GROUPING_MAP = {
 def dcc_grouped_stats(dcc_name,variable,grouping):
     catalog_id = request.args.get("catalogId", type=int)
     helper = _get_helper(catalog_id)
+    if isinstance(helper, wrappers.Response):
+        return helper
 
     err = None
 
@@ -538,6 +553,8 @@ def _grouped_stats_aux(helper,variable,grouping1,max_groups1,grouping2,max_group
 def grouped_stats(variable,grouping1,grouping2):
     catalog_id = request.args.get("catalogId", type=int)
     helper = _get_helper(catalog_id)
+    if isinstance(helper, wrappers.Response):
+        return helper
 
     err = None
 
@@ -685,6 +702,8 @@ def _merge_groups(groups, max_groups, grouping1):
 def grouped_stats_other(variable,grouping1,maxgroups1,grouping2,maxgroups2):
     catalog_id = request.args.get("catalogId", type=int)
     helper = _get_helper(catalog_id)
+    if isinstance(helper, wrappers.Response):
+        return helper
 
     err = None
 
