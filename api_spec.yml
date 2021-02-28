@@ -409,10 +409,13 @@ components:
       - description
       - principal_investigators
       - url
+      - project_count
+      - toplevel_project_count
       - subject_count
       - biosample_count
       - file_count
       - last_updated
+      - RID
       properties:
         moniker:
           type: string
@@ -435,6 +438,12 @@ components:
         url:
           type: string
           format: uri
+        project_count:
+          type: integer
+          minimum: 0
+        toplevel_project_count:
+          type: integer
+          minimum: 0
         subject_count:
           type: integer
           minimum: 0
@@ -450,6 +459,9 @@ components:
         last_updated:
           type: string
           format: date-time
+        RID:
+          type: string
+
       example:
         moniker: HMP
         complete_name: The NIH Human Microbiome Project
@@ -464,6 +476,7 @@ components:
         file_count: 14565139
         anatomy_term_count: 156
         last_updated: "2020-09-30T02:51:20Z"
+	RID: "ABCD"
     PrincipalInvestigator:
       type: object
       description: A basic object describing a Principal Investigator, including name and email contact information.

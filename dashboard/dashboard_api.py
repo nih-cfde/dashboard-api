@@ -169,10 +169,13 @@ def all_dcc_info():
 #      - description
 #      - principal_investigators
 #      - url
+#      - project_count
+#      - toplevel_project_count
 #      - subject_count
 #      - biosample_count
 #      - file_count
 #      - last_updated
+#      - RID
 #
 @app.route('/dcc/<string:dcc_name>', methods=['GET'])
 def dcc_info(dcc_name):
@@ -189,7 +192,7 @@ def dcc_info(dcc_name):
     # DCC found
 
     # subject, file, and biosample counts
-    counts = _get_dcc_entity_counts(helper, dcc_name, { 'subject': True, 'file': True, 'biosample': True })
+    counts = _get_dcc_entity_counts(helper, dcc_name, { 'subject': True, 'file': True, 'biosample': True, 'project': True })
 
     dcc_url = None
 
@@ -219,10 +222,13 @@ def dcc_info(dcc_name):
         # TODO - current schema has primary_dcc_contact, but no info on PIs
         'principal_investigators': [],
         'url': dcc_url,
+        'project_count': counts['project_count'],
+        'toplevel_project_count': counts['toplevel_project_count'],
         'subject_count': counts['subject_count'],
         'biosample_count': counts['biosample_count'],
         'file_count': counts['file_count'],
         'last_updated': dcc['RMT'],
+        'RID': dcc['RID'],
     })
 
 # /dcc/{dccName}/projects
@@ -308,6 +314,7 @@ def _get_dcc_entity_counts(helper, dcc_name, counts):
             path = p_root.link(p).filter(p.abbreviation == dcc_name)
         proj_path = path.link(pipt, on= ((p_root.project_id_namespace == pipt.leader_project_id_namespace)
                                     & (p_root.project_local_id == pipt.leader_project_local_id )))
+#        projt_path = proj_path.filter(pipt.leader_project_local_id != p_root.project_local_id)
         return proj_path
 
     # get path to only top-level subprojects of a root project (i.e., DCC)
@@ -347,11 +354,15 @@ def _get_dcc_entity_counts(helper, dcc_name, counts):
                                            & (proj_path.pipt.member_project_local_id == f.project_local_id )))
         return file_path
 
-    # subproject count
+    # project counts - all and only children of top-level DCC project node
     if (counts is None) or ('project' in counts):
+        pp = get_proj_path()
+        qr = pp.aggregates(CntD(pp.pipt.member_project_local_id).alias('num_projects')).fetch(headers=pass_headers())
+        res['project_count'] = qr[0]['num_projects'] - 1
+
         sp = get_subproj_path()
         qr = sp.aggregates(CntD(sp.pip.RID).alias('num_projects')).fetch(headers=pass_headers())
-        res['project_count'] = qr[0]['num_projects']
+        res['toplevel_project_count'] = qr[0]['num_projects']
 
     # subject count
     if (counts is None) or ('subject' in counts):
