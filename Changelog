@@ -1,7 +1,8 @@
 1.2
  -Updated to API version 0.0.3
-  -/dcc/{dccName} - rename project_count to toplevel_project_count, add RID
-  -/dcc/{dccName} - project_count now returns total number of projects (not incl. DCC)
+  -/dcc/{dccName} - add RID [#18]
+  -/dcc/{dccName} - rename project_count to toplevel_project_count [#17]
+  -/dcc/{dccName} - project_count now returns total number of projects (not incl. DCC) [#17]
 
 1.1 (February 26, 2021)
  -Updated to API version 0.0.2
