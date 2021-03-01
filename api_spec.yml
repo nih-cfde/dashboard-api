@@ -5,7 +5,7 @@ info:
   license:
     name: Apache 2.0
     url: http://www.apache.org/licenses/LICENSE-2.0.html
-  version: 0.0.2
+  version: 0.0.3
 tags:
    - name: "DCC"
      description: "Get information about a single specific DCC."
@@ -416,6 +416,7 @@ components:
       - file_count
       - last_updated
       - RID
+      - datapackage_RID
       properties:
         moniker:
           type: string
@@ -460,6 +461,8 @@ components:
           type: string
           format: date-time
         RID:
+          type: string
+        datapackage_RID:
           type: string
 
       example:

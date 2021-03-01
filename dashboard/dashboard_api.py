@@ -176,6 +176,7 @@ def all_dcc_info():
 #      - file_count
 #      - last_updated
 #      - RID
+#      - datapackage_RID
 #
 @app.route('/dcc/<string:dcc_name>', methods=['GET'])
 def dcc_info(dcc_name):
@@ -184,6 +185,9 @@ def dcc_info(dcc_name):
     if isinstance(helper, wrappers.Response):
         return helper
 
+    if catalog_id is None:
+        catalog_id = DEFAULT_CATALOG_ID
+    
     dcc = _abbreviation_to_dcc(helper, dcc_name)
     # DCC not found
     if dcc is None:
@@ -215,6 +219,20 @@ def dcc_info(dcc_name):
                 dcc_url = dcc[att]
                 break
 
+    # interrogate registry for datapackage RID
+    r_helper = _get_helper('registry')
+    
+    dp_path = r_helper.builder.CFDE.datapackage.alias('dp')
+    res = dp_path.entities().fetch(headers=pass_headers())
+    dp_rid = None
+
+    # TODO - use a more direct approach, if possible:
+    regex = re.compile('^.*catalogId=' + str(catalog_id) + '$')
+    for r in res:
+        review_url = r['review_summary_url']
+        if (review_url is not None) and re.match(regex, review_url):
+            dp_rid = r['RID']
+
     return json.dumps({
         'moniker': dcc['abbreviation'],
         'complete_name': dcc['name'],
@@ -229,6 +247,7 @@ def dcc_info(dcc_name):
         'file_count': counts['file_count'],
         'last_updated': dcc['RMT'],
         'RID': dcc['RID'],
+        'datapackage_RID': dp_rid,
     })
 
 # /dcc/{dccName}/projects
