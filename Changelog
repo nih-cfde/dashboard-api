@@ -1,4 +1,4 @@
-1.2
+1.2 (March 2, 2021)
  -Updated to API version 0.0.3
   -/dcc/{dccName} - add RID [#18]
   -/dcc/{dccName} - rename project_count to toplevel_project_count [#17]
