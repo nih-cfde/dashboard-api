@@ -80,10 +80,8 @@ def _get_helper(catalog_id):
 
     return helpers[catalog_id]
 
-
 def pass_headers():
     return dict(request.headers) if PASS_HEADERS else DEFAULT_HEADERS
-
 
 def _abbreviation_to_dcc(helper, dcc_name):
     # helper.list_projects removes attributes from project and also performs an additional
@@ -461,6 +459,7 @@ def dcc_linkscount(dcc_name):
 
     # DCC found
     res = _get_dcc_entity_counts(helper, dcc_name, None)
+    res['RID'] = dcc['RID']
     return json.dumps(res)
 
 # parameterization for dcc_grouped_stats

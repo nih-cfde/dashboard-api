@@ -5,7 +5,7 @@ info:
   license:
     name: Apache 2.0
     url: http://www.apache.org/licenses/LICENSE-2.0.html
-  version: 0.0.3
+  version: 0.0.4
 tags:
    - name: "DCC"
      description: "Get information about a single specific DCC."
@@ -540,6 +540,8 @@ components:
         file_with_biosample_count:
           type: integer
           minimum: 0
+        RID:
+          type: string
     DCCGrouping:
       type: object
       description: How a brick in the dashboard stacked bar plot is described.

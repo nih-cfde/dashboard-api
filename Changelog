@@ -1,6 +1,10 @@
+1.3
+ -Updated to API version 0.0.4
+  -/dcc/{dccName}/linkcount - add RID [#23]
+	
 1.2 (March 2, 2021)
  -Updated to API version 0.0.3
-  -/dcc/{dccName} - add RID [#18]
+  -/dcc/{dccName} - add RID [#16]
   -/dcc/{dccName} - rename project_count to toplevel_project_count [#17]
   -/dcc/{dccName} - project_count now returns total number of projects (not incl. DCC) [#17]
   -/dcc/{dccName} - add datapackage_RID [#14]
