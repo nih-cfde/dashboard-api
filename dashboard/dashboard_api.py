@@ -84,13 +84,20 @@ def pass_headers():
     return dict(request.headers) if PASS_HEADERS else DEFAULT_HEADERS
 
 def _abbreviation_to_dcc(helper, dcc_name):
-    # helper.list_projects removes attributes from project and also performs an additional
-    # join to compute num_subprojects, which we don't need, so we perform a
-    # direct query by DCC abbreviation with no additional joins
     p_root = helper.builder.CFDE.project_root.alias('p_root')
     p = helper.builder.CFDE.project.alias('p')
-    path = p_root.link(p).filter(p.abbreviation == dcc_name)
-    res = path.entities().fetch(headers=pass_headers())
+    pdc = helper.builder.CFDE.primary_dcc_contact.alias('pdc')
+    path = p_root.link(p).link(pdc).filter(pdc.dcc_abbreviation == dcc_name)
+
+    res = path.attributes(
+        path.p.RID,
+        path.p.RMT,
+        path.p.name,
+        path.p.description,
+        path.p.id_namespace,
+        path.p.persistent_id,
+        path.pdc.dcc_abbreviation,
+    ).fetch(headers=pass_headers())
 
     if len(res) == 1:
         return res[0]
@@ -100,7 +107,13 @@ def _abbreviation_to_dcc(helper, dcc_name):
 def _all_dccs(helper):
     p_root = helper.builder.CFDE.project_root.alias('p_root')
     p = helper.builder.CFDE.project.alias('p')
-    res = p_root.link(p).entities().fetch(headers=pass_headers())
+    pdc = helper.builder.CFDE.primary_dcc_contact.alias('pdc')
+    path = p_root.link(p).link(pdc)
+    res = path.attributes(
+        path.p.RID,
+        path.p.RMT,
+        path.pdc.dcc_abbreviation,
+    ).fetch(headers=pass_headers())
     return res
 
 # -------------------------------------------------------------------------
@@ -116,8 +129,8 @@ def dcc_list():
     if isinstance(helper, wrappers.Response):
         return helper
 
-    dccs = list(helper.list_projects(use_root_projects=True, headers=pass_headers()))
-    dcc_abbrevs = [dcc['abbreviation'] for dcc in dccs]
+    dccs = _all_dccs(helper)
+    dcc_abbrevs = [dcc['dcc_abbreviation'] for dcc in dccs]
     return json.dumps(dcc_abbrevs)
 
 # /dcc_info
@@ -194,16 +207,16 @@ def dcc_info(dcc_name):
     # DCC found
 
     # subject, file, and biosample counts
-    counts = _get_dcc_entity_counts(helper, dcc_name, { 'subject': True, 'file': True, 'biosample': True, 'project': True })
+    counts = _get_dcc_entity_counts(helper, dcc['RID'], { 'subject': True, 'file': True, 'biosample': True, 'project': True })
 
     dcc_url = None
 
     # primary DCC contact
     p_root = helper.builder.CFDE.project_root.alias('p_root')
     p = helper.builder.CFDE.project.alias('p')
-    path = p_root.link(p).filter(p.abbreviation == dcc_name)
+    path = p_root.link(p)
     pdc = helper.builder.CFDE.primary_dcc_contact.alias('pdc')
-    path = path.link(pdc)
+    path = path.link(pdc).filter(pdc.dcc_abbreviation == dcc_name)
     res = path.entities().fetch(headers=pass_headers())
 
     # TODO - include dcc contact info in summary API endpoint?
@@ -226,13 +239,14 @@ def dcc_info(dcc_name):
 
     # TODO - use a more direct approach, if possible:
     regex = re.compile('^.*catalogId=' + str(catalog_id) + '$')
+
     for r in res:
         review_url = r['review_summary_url']
         if (review_url is not None) and re.match(regex, review_url):
             dp_rid = r['RID']
 
     return json.dumps({
-        'moniker': dcc['abbreviation'],
+        'moniker': dcc['dcc_abbreviation'],
         'complete_name': dcc['name'],
         'description': dcc['description'],
         # TODO - current schema has primary_dcc_contact, but no info on PIs
@@ -317,7 +331,7 @@ def dcc_filecount(dcc_name):
     return json.dumps(res)
 
 # don't filter by DCC if dcc_name is None
-def _get_dcc_entity_counts(helper, dcc_name, counts):
+def _get_dcc_entity_counts(helper, dcc_RID, counts):
     res = {}
 
     # get path to all subprojects of DCC
@@ -325,10 +339,10 @@ def _get_dcc_entity_counts(helper, dcc_name, counts):
         p_root = helper.builder.CFDE.project_root.alias('p_root')
         p = helper.builder.CFDE.project.alias('p')
         pipt = helper.builder.CFDE.project_in_project_transitive.alias('pipt')
-        if dcc_name is None:
+        if dcc_RID is None:
             path = p_root.link(p)
         else:
-            path = p_root.link(p).filter(p.abbreviation == dcc_name)
+            path = p_root.link(p).filter(p.RID == dcc_RID)
         proj_path = path.link(pipt, on= ((p_root.project_id_namespace == pipt.leader_project_id_namespace)
                                     & (p_root.project_local_id == pipt.leader_project_local_id )))
 #        projt_path = proj_path.filter(pipt.leader_project_local_id != p_root.project_local_id)
@@ -339,10 +353,10 @@ def _get_dcc_entity_counts(helper, dcc_name, counts):
         p_root = helper.builder.CFDE.project_root.alias('p_root')
         p = helper.builder.CFDE.project.alias('p')
         pip = helper.builder.CFDE.project_in_project.alias('pip')
-        if dcc_name is None:
+        if dcc_RID is None:
             path = p_root.link(p)
         else:
-            path = p_root.link(p).filter(p.abbreviation == dcc_name)
+            path = p_root.link(p).filter(p.abbreviation == dcc_RID)
         proj_path = path.link(pip, on= ((p_root.project_id_namespace == pip.parent_project_id_namespace)
                                     & (p_root.project_local_id == pip.parent_project_local_id )))
         return proj_path
@@ -458,7 +472,7 @@ def dcc_linkscount(dcc_name):
         return _dcc_not_found_response(dcc_name)
 
     # DCC found
-    res = _get_dcc_entity_counts(helper, dcc_name, None)
+    res = _get_dcc_entity_counts(helper, dcc['RID'], None)
     res['RID'] = dcc['RID']
     return json.dumps(res)
 
@@ -527,9 +541,9 @@ def _grouped_stats_aux(helper,variable,grouping1,max_groups1,grouping2,max_group
     # need to map project_RID to project_abbreviation if grouping=dcc
     rid_to_abbrev = {}
     if (grouping1 == "dcc") or (grouping2 == "dcc"):
-        dccs = list(helper.list_projects(use_root_projects=True))
+        dccs = _all_dccs(helper)
         for dcc in dccs:
-            rid_to_abbrev[dcc['RID']] = dcc['abbreviation']
+            rid_to_abbrev[dcc['RID']] = dcc['dcc_abbreviation']
 
     vm = VARIABLE_MAP[variable]
     gm1 = GROUPING_MAP[grouping1]
