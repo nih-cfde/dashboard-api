@@ -1,7 +1,8 @@
-1.3
+1.3 (March 29, 2021)
  -Updated to API version 0.0.4
   -/dcc/{dccName}/linkcount - add RID [#23]
-	
+ -Switched to using primary_dcc_contact.dcc_abbreviation for DCC moniker/dccName [#26]
+
 1.2 (March 2, 2021)
  -Updated to API version 0.0.3
   -/dcc/{dccName} - add RID [#16]
