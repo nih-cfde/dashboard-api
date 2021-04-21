@@ -5,7 +5,7 @@ info:
   license:
     name: Apache 2.0
     url: http://www.apache.org/licenses/LICENSE-2.0.html
-  version: 0.0.4
+  version: 0.0.5
 tags:
    - name: "DCC"
      description: "Get information about a single specific DCC."
@@ -14,8 +14,8 @@ tags:
 paths:
   /dcc:
     get:
-      summary: Returns a listing of the DCCs that have data available.
-      description: For users to access other endpoints in the API, a listing of the DCC (Data Coordination Center) monikers that exist is necessary, as other methods require the DCC name as a URL parameter.
+      summary: Returns a list of DCCs.
+      description: Returns a list of DCCs, including an 'id' field that can be passed to DCC-specific endpoints and a human-readable 'abbreviation' suitable for display to the end user.
       tags:
       - Stats
       parameters:
@@ -31,7 +31,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DCCListingResponse'
+                $ref: '#/components/schemas/DCCList'
         404:
           description: The specified DERIVA catalog could not be found.
         5XX:
@@ -70,7 +70,7 @@ paths:
               schema:
                 type: string
               description: Human friendly reason for the error or exception.
-  /dcc/{dccName}:
+  /dcc/{dccId}:
     get:
       description: Returns general information about the specified DCC, such as the Principal Investigator(s) and description.
       tags:
@@ -82,9 +82,9 @@ paths:
         required: false
         schema:
           type: integer
-      - name: dccName
+      - name: dccId
         in: path
-        description: The DCC moniker for which general information is requested.
+        description: The DCC for which general information is requested.
         required: true
         schema:
           type: string
@@ -104,7 +104,7 @@ paths:
               schema:
                 type: string
               description: Human friendly reason for the error or exception.
-  /dcc/{dccName}/projects:
+  /dcc/{dccId}/projects:
     get:
       description: Returns a listing of projects associated with the specified DCC.
       tags:
@@ -116,9 +116,9 @@ paths:
         required: false
         schema:
           type: integer
-      - name: dccName
+      - name: dccId
         in: path
-        description: The DCC moniker for which the project listing is requested.
+        description: The DCC for which the project listing is requested.
         required: true
         schema:
           type: string
@@ -138,7 +138,7 @@ paths:
               schema:
                 type: string
               description: Human friendly reason for the error or exception.
-  /dcc/{dccName}/filecount:
+  /dcc/{dccId}/filecount:
     get:
       description: Returns the number of files associated with a particular DCC broken down by data type.
       tags:
@@ -150,9 +150,9 @@ paths:
         required: false
         schema:
           type: integer
-      - name: dccName
+      - name: dccId
         in: path
-        description: The DCC moniker for which file counts are requested.
+        description: The DCC for which file counts are requested.
         required: true
         schema:
           type: string
@@ -172,7 +172,7 @@ paths:
               schema:
                 type: string
               description: Human friendly reason for the error or exception.
-  /dcc/{dccName}/linkcount:
+  /dcc/{dccId}/linkcount:
     get:
       description: Returns counts of linked entities (e.g., biosamples linked to subjects) for a specific DCC.
       tags:
@@ -184,9 +184,9 @@ paths:
         required: false
         schema:
           type: integer
-      - name: dccName
+      - name: dccId
         in: path
-        description: The DCC moniker for which linked entity counts are requested.
+        description: The DCC for which linked entity counts are requested.
         required: true
         schema:
           type: string
@@ -206,7 +206,7 @@ paths:
               schema:
                 type: string
               description: Human friendly reason for the error or exception.
-  /dcc/{dccName}/stats/{variable}/{grouping}:
+  /dcc/{dccId}/stats/{variable}/{grouping}:
     get:
       description: Returns statistics for the requested variable grouped by the specified aggregation.
       tags:
@@ -218,9 +218,9 @@ paths:
         required: false
         schema:
           type: integer
-      - name: dccName
+      - name: dccId
         in: path
-        description: The DCC moniker for which file counts are requested.
+        description: The DCC for which file counts are requested.
         required: true
         schema:
           type: string
@@ -358,15 +358,59 @@ paths:
               description: Human friendly reason for the error or exception.
 components:
   schemas:
-    DCCListingResponse:
-      type: array
-      description: A list of DCC names that have data available in the database for display.
-      items:
-        type: string
+    DCC:
+      type: object
+      description: An object with minimal information about a DCC.
+      required:
+      - id
+      - abbreviation
+      - complete_name
+      - description
+      - url
+      - last_updated
+      - RID
+      properties:
+        id:
+          type: string
+          minLength: 3
+          maxLength: 64
+          pattern: "^[0-9a-z_-]+(:[0-9a-z_-]+)?$"
+        abbreviation:
+          type: string
+          minLength: 3
+          maxLength: 64
+          pattern: "^[0-9A-Za-z_-]+$"
+        complete_name:
+          type: string
+          minLength: 3
+          maxLength: 64
+        description:
+          type: string
+          minLength: 3
+          maxLength: 256
+        url:
+          type: string
+          format: uri
+        last_updated:
+          type: string
+          format: date-time
+        RID:
+          type: string
       example:
-      - HMP
-      - KidsFirst
-      - LINCS
+        id: cfde_registry_dcc:hmp
+        abbreviation: HMP
+        complete_name: The NIH Human Microbiome Project
+        description: Characterization of the microbiomes of healthy human subjects at five major body sites, using 16S and metagenomic shotgun sequencing.
+        url: https://www.hmpdacc.org
+        last_updated: "2020-09-30T02:51:20Z"
+        RID: "ABCD"
+    DCCList:
+      type: array
+      description: A list of DCCs.
+      items:
+        type: array
+        items:
+          $ref: '#/components/schemas/DCC'
     DCCProjectListingResponse:
       type: array
       description: A list of projects within the DCC.
@@ -404,7 +448,8 @@ components:
       type: object
       description: An object with general information about a DCC.
       required:
-      - moniker
+      - id
+      - abbreviation
       - complete_name
       - description
       - principal_investigators
@@ -418,10 +463,15 @@ components:
       - RID
       - datapackage_RID
       properties:
-        moniker:
+        id:
           type: string
           minLength: 3
-          maxLength: 12
+          maxLength: 64
+          pattern: "^[0-9a-z_-]+(:[0-9a-z_-]+)?$"
+        abbreviation:
+          type: string
+          minLength: 3
+          maxLength: 64
           pattern: "^[0-9A-Za-z_-]+$"
         complete_name:
           type: string
@@ -464,9 +514,9 @@ components:
           type: string
         datapackage_RID:
           type: string
-
       example:
-        moniker: HMP
+        id: cfde_registry_dcc:hmp
+        abbreviation: HMP
         complete_name: The NIH Human Microbiome Project
         description: Characterization of the microbiomes of healthy human subjects at five major body sites, using 16S and metagenomic shotgun sequencing.
         principal_investigators:
@@ -474,12 +524,13 @@ components:
           last_name: Honeydew
           email: bhoneydew@example.edu
         url: https://www.hmpdacc.org
+        project_count: 3
         subject_count: 961
         biosample_count: 53272
         file_count: 14565139
         anatomy_term_count: 156
         last_updated: "2020-09-30T02:51:20Z"
-	RID: "ABCD"
+        RID: "ABCD"
     PrincipalInvestigator:
       type: object
       description: A basic object describing a Principal Investigator, including name and email contact information.

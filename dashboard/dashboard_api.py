@@ -44,8 +44,8 @@ def _error_response(err, code):
 def _catalog_not_found_response(catalog_id):
     return _error_response("DERIVA catalogId " + str(catalog_id) + " not found", 404)
 
-def _dcc_not_found_response(dcc_name):
-    return _error_response("DCC '" + dcc_name + "' not found", 404)
+def _dcc_not_found_response(dcc_id):
+    return _error_response("DCC '" + dcc_id + "' not found", 404)
 
 @app.errorhandler(DataPathException)
 def handle_datapath_exception(error):
@@ -83,20 +83,34 @@ def _get_helper(catalog_id):
 def pass_headers():
     return dict(request.headers) if PASS_HEADERS else DEFAULT_HEADERS
 
-def _abbreviation_to_dcc(helper, dcc_name):
-    p_root = helper.builder.CFDE.project_root.alias('p_root')
-    p = helper.builder.CFDE.project.alias('p')
-    pdc = helper.builder.CFDE.primary_dcc_contact.alias('pdc')
-    path = p_root.link(p).link(pdc).filter(pdc.dcc_abbreviation == dcc_name)
+def _id_to_dcc(helper, dcc_id):
+    dcc = helper.builder.CFDE.dcc.alias('dcc')
+    path = dcc.filter(dcc.id == dcc_id)
 
     res = path.attributes(
-        path.p.RID,
-        path.p.RMT,
-        path.p.name,
-        path.p.description,
-        path.p.id_namespace,
-        path.p.persistent_id,
-        path.pdc.dcc_abbreviation,
+        path.dcc.id,
+        path.dcc.RID,
+        path.dcc.RMT,
+        path.dcc.dcc_name,
+        path.dcc.dcc_description,
+        path.dcc.dcc_url,
+        path.dcc.contact_name,
+        path.dcc.contact_email,
+        path.dcc.dcc_abbreviation,
+    ).fetch(headers=pass_headers())
+
+    if len(res) == 1:
+        return res[0]
+
+    return None
+
+def _id_to_dcc_project(helper, dcc_id):
+    dcc = helper.builder.CFDE.dcc.alias('dcc')
+    p = helper.builder.CFDE.project.alias('p')
+    path = dcc.filter(dcc.id == dcc_id).link(p)
+
+    res = path.attributes(
+        path.p.RID
     ).fetch(headers=pass_headers())
 
     if len(res) == 1:
@@ -105,14 +119,21 @@ def _abbreviation_to_dcc(helper, dcc_name):
     return None
 
 def _all_dccs(helper):
-    p_root = helper.builder.CFDE.project_root.alias('p_root')
+    dcc = helper.builder.CFDE.dcc.alias('dcc')
     p = helper.builder.CFDE.project.alias('p')
-    pdc = helper.builder.CFDE.primary_dcc_contact.alias('pdc')
-    path = p_root.link(p).link(pdc)
+    path = dcc.link(p)
+    
     res = path.attributes(
-        path.p.RID,
-        path.p.RMT,
-        path.pdc.dcc_abbreviation,
+        path.dcc.id,
+        path.dcc.RID,
+        path.dcc.RMT,
+        path.dcc.dcc_name,
+        path.dcc.dcc_description,
+        path.dcc.dcc_url,
+        path.dcc.contact_name,
+        path.dcc.contact_email,
+        path.dcc.dcc_abbreviation,
+        path.p.RID.alias("project_RID")
     ).fetch(headers=pass_headers())
     return res
 
@@ -130,11 +151,20 @@ def dcc_list():
         return helper
 
     dccs = _all_dccs(helper)
-    dcc_abbrevs = [dcc['dcc_abbreviation'] for dcc in dccs]
-    return json.dumps(dcc_abbrevs)
+    dcc_list = [{
+        'id': dcc['id'],
+        'abbreviation': dcc['dcc_abbreviation'],
+        'complete_name': dcc['dcc_name'],
+        'description': dcc['dcc_description'],
+        'url': dcc['dcc_url'],
+        'last_updated': dcc['RMT'],
+        'RID': dcc['RID'],
+    } for dcc in dccs]
+
+    return json.dumps(dcc_list)
 
 # /dcc_info
-# Returns summary info for all DCCs in the archive, similar to /dcc/{dccName} for
+# Returns summary info for all DCCs in the archive, similar to /dcc/{dccId} for
 # a single DCC.
 @app.route('/dcc_info', methods=['GET'])
 def all_dcc_info():
@@ -172,10 +202,11 @@ def all_dcc_info():
         'last_updated': last_updated,
     })
 
-# /dcc/{dccName}
+# /dcc/{dccId}
 # Returns general information about the specified DCC, such as the Principal Investigator(s) and description.
 #
-#      - moniker
+#      - id
+#      - abbreviation
 #      - complete_name
 #      - description
 #      - principal_investigators
@@ -189,8 +220,8 @@ def all_dcc_info():
 #      - RID
 #      - datapackage_RID
 #
-@app.route('/dcc/<string:dcc_name>', methods=['GET'])
-def dcc_info(dcc_name):
+@app.route('/dcc/<string:dcc_id>', methods=['GET'])
+def dcc_info(dcc_id):
     catalog_id = request.args.get("catalogId", type=int)
     helper = _get_helper(catalog_id)
     if isinstance(helper, wrappers.Response):
@@ -198,37 +229,17 @@ def dcc_info(dcc_name):
 
     if catalog_id is None:
         catalog_id = DEFAULT_CATALOG_ID
-    
-    dcc = _abbreviation_to_dcc(helper, dcc_name)
+
+    dcc = _id_to_dcc(helper, dcc_id)
+
     # DCC not found
     if dcc is None:
-        return _dcc_not_found_response(dcc_name)
+        return _dcc_not_found_response(dcc_id)
 
     # DCC found
 
     # subject, file, and biosample counts
     counts = _get_dcc_entity_counts(helper, dcc['RID'], { 'subject': True, 'file': True, 'biosample': True, 'project': True })
-
-    dcc_url = None
-
-    # primary DCC contact
-    p_root = helper.builder.CFDE.project_root.alias('p_root')
-    p = helper.builder.CFDE.project.alias('p')
-    path = p_root.link(p)
-    pdc = helper.builder.CFDE.primary_dcc_contact.alias('pdc')
-    path = path.link(pdc).filter(pdc.dcc_abbreviation == dcc_name)
-    res = path.entities().fetch(headers=pass_headers())
-
-    # TODO - include dcc contact info in summary API endpoint?
-    if len(res) == 1:
-        dcc_url = res[0]['dcc_url']
-
-    # otherwise look for something resembling a DCC URL in the project
-    if dcc_url is None:
-        for att in ['persistent_id', 'id_namespace']:
-            if (dcc[att] is not None) and re.search(r'^http', dcc[att]):
-                dcc_url = dcc[att]
-                break
 
     # interrogate registry for datapackage RID
     r_helper = _get_helper('registry')
@@ -246,12 +257,13 @@ def dcc_info(dcc_name):
             dp_rid = r['RID']
 
     return json.dumps({
-        'moniker': dcc['dcc_abbreviation'],
-        'complete_name': dcc['name'],
-        'description': dcc['description'],
+        'id': dcc['id'],
+        'abbreviation': dcc['dcc_abbreviation'],
+        'complete_name': dcc['dcc_name'],
+        'description': dcc['dcc_description'],
         # TODO - current schema has primary_dcc_contact, but no info on PIs
         'principal_investigators': [],
-        'url': dcc_url,
+        'url': dcc['dcc_url'],
         'project_count': counts['project_count'],
         'toplevel_project_count': counts['toplevel_project_count'],
         'subject_count': counts['subject_count'],
@@ -262,23 +274,25 @@ def dcc_info(dcc_name):
         'datapackage_RID': dp_rid,
     })
 
-# /dcc/{dccName}/projects
+# /dcc/{dccId}/projects
 # Returns a listing of (top-level) projects associated with the specified DCC.
-@app.route('/dcc/<string:dcc_name>/projects', methods=['GET'])
-def dcc_projects(dcc_name):
+@app.route('/dcc/<string:dcc_id>/projects', methods=['GET'])
+def dcc_projects(dcc_id):
     catalog_id = request.args.get("catalogId", type=int)
     helper = _get_helper(catalog_id)
     if isinstance(helper, wrappers.Response):
         return helper
 
-    dcc = _abbreviation_to_dcc(helper, dcc_name)
+    dcc_proj = _id_to_dcc_project(helper, dcc_id)
 
     # DCC not found
-    if dcc is None:
-        return _dcc_not_found_response(dcc_name)
+    if dcc_proj is None:
+        return _dcc_not_found_response(dcc_id)
 
+    # TODO - map to DCC project RID to pass to list_projects
+    
     # DCC found
-    projects = helper.list_projects(parent_project_RID=dcc['RID'])
+    projects = helper.list_projects(parent_project_RID=dcc_proj['RID'])
     res = []
     for proj in projects:
         # TODO - nothing in project appears to be non-nullable
@@ -302,20 +316,20 @@ def _get_stats_name_and_count(row, key_att, count_att):
         count = 0
     return {'name': name, 'count': count}
 
-# /dcc/{dccName}/filecount
+# /dcc/{dccId}/filecount
 # Returns the number of files associated with a particular DCC broken down by data type.
-@app.route('/dcc/<string:dcc_name>/filecount', methods=['GET'])
-def dcc_filecount(dcc_name):
+@app.route('/dcc/<string:dcc_id>/filecount', methods=['GET'])
+def dcc_filecount(dcc_id):
     catalog_id = request.args.get("catalogId", type=int)
     helper = _get_helper(catalog_id)
     if isinstance(helper, wrappers.Response):
         return helper
 
-    dcc = _abbreviation_to_dcc(helper, dcc_name)
-
+    dcc_proj = _id_to_dcc_project(helper, dcc_id)
+    
     # DCC not found
-    if dcc is None:
-        return _dcc_not_found_response(dcc_name)
+    if dcc_proj is None:
+        return _dcc_not_found_response(dcc_id)
 
     # DCC found
     fcounts = list(StatsQuery(helper).entity(
@@ -324,41 +338,42 @@ def dcc_filecount(dcc_name):
     res = {}
 
     for fc in fcounts:
-        if fc['project_RID'] == dcc['RID']:
+        if fc['project_RID'] == dcc_proj['RID']:
             nc = _get_stats_name_and_count(fc, 'data_type_name', 'num_files')
             res[nc['name']] = nc['count']
 
     return json.dumps(res)
 
-# don't filter by DCC if dcc_name is None
+# don't filter by DCC if dcc_RID is None
 def _get_dcc_entity_counts(helper, dcc_RID, counts):
     res = {}
 
     # get path to all subprojects of DCC
     def get_proj_path():
+        dcc = helper.builder.CFDE.dcc.alias('dcc')
         p_root = helper.builder.CFDE.project_root.alias('p_root')
         p = helper.builder.CFDE.project.alias('p')
         pipt = helper.builder.CFDE.project_in_project_transitive.alias('pipt')
         if dcc_RID is None:
             path = p_root.link(p)
         else:
-            path = p_root.link(p).filter(p.RID == dcc_RID)
-        proj_path = path.link(pipt, on= ((p_root.project_id_namespace == pipt.leader_project_id_namespace)
-                                    & (p_root.project_local_id == pipt.leader_project_local_id )))
-#        projt_path = proj_path.filter(pipt.leader_project_local_id != p_root.project_local_id)
+            path = dcc.filter(dcc.RID == dcc_RID).link(p)
+        proj_path = path.link(pipt, on= ((p.id_namespace == pipt.leader_project_id_namespace)
+                                    & (p.local_id == pipt.leader_project_local_id )))
         return proj_path
 
     # get path to only top-level subprojects of a root project (i.e., DCC)
     def get_subproj_path():
+        dcc = helper.builder.CFDE.dcc.alias('dcc')
         p_root = helper.builder.CFDE.project_root.alias('p_root')
         p = helper.builder.CFDE.project.alias('p')
         pip = helper.builder.CFDE.project_in_project.alias('pip')
         if dcc_RID is None:
             path = p_root.link(p)
         else:
-            path = p_root.link(p).filter(p.abbreviation == dcc_RID)
-        proj_path = path.link(pip, on= ((p_root.project_id_namespace == pip.parent_project_id_namespace)
-                                    & (p_root.project_local_id == pip.parent_project_local_id )))
+            path = dcc.filter(dcc.RID == dcc_RID).link(p)
+        proj_path = path.link(pip, on= ((p.id_namespace == pip.parent_project_id_namespace)
+                                    & (p.local_id == pip.parent_project_local_id )))
         return proj_path
 
     # path to DCCs' subjects
@@ -456,20 +471,20 @@ def _get_dcc_entity_counts(helper, dcc_RID, counts):
 
     return res
 
-# /dcc/{dccName}/linkcount
+# /dcc/{dccId}/linkcount
 # Returns the number of linked entities for various combinations.
-@app.route('/dcc/<string:dcc_name>/linkcount', methods=['GET'])
-def dcc_linkscount(dcc_name):
+@app.route('/dcc/<string:dcc_id>/linkcount', methods=['GET'])
+def dcc_linkscount(dcc_id):
     catalog_id = request.args.get("catalogId", type=int)
     helper = _get_helper(catalog_id)
     if isinstance(helper, wrappers.Response):
         return helper
 
-    dcc = _abbreviation_to_dcc(helper, dcc_name)
+    dcc = _id_to_dcc(helper, dcc_id)
 
     # DCC not found
     if dcc is None:
-        return _dcc_not_found_response(dcc_name)
+        return _dcc_not_found_response(dcc_id)
 
     # DCC found
     res = _get_dcc_entity_counts(helper, dcc['RID'], None)
@@ -491,10 +506,10 @@ GROUPING_MAP = {
     'dcc': {'dimension': 'project_root', 'att': 'project_RID' },
 }
 
-# /dcc/{dccName}/stats/{variable}/{grouping}
+# /dcc/{dccId}/stats/{variable}/{grouping}
 # Returns statistics for the requested variable grouped by the specified aggregation.
-@app.route('/dcc/<string:dcc_name>/stats/<string:variable>/<string:grouping>', methods=['GET'])
-def dcc_grouped_stats(dcc_name,variable,grouping):
+@app.route('/dcc/<string:dcc_id>/stats/<string:variable>/<string:grouping>', methods=['GET'])
+def dcc_grouped_stats(dcc_id,variable,grouping):
     catalog_id = request.args.get("catalogId", type=int)
     helper = _get_helper(catalog_id)
     if isinstance(helper, wrappers.Response):
@@ -514,11 +529,11 @@ def dcc_grouped_stats(dcc_name,variable,grouping):
     if err is not None:
         return _error_response(err, 404)
 
-    dcc = _abbreviation_to_dcc(helper, dcc_name)
+    dcc_proj = _id_to_dcc_project(helper, dcc_id)
 
     # DCC not found
-    if dcc is None:
-        return _dcc_not_found_response(dcc_name)
+    if dcc_proj is None:
+        return _dcc_not_found_response(dcc_id)
 
     vm = VARIABLE_MAP[variable]
     gm = GROUPING_MAP[grouping]
@@ -529,7 +544,7 @@ def dcc_grouped_stats(dcc_name,variable,grouping):
     res = {}
 
     for ct in counts:
-        if ct['project_RID'] == dcc['RID']:
+        if ct['project_RID'] == dcc_proj['RID']:
             nc = _get_stats_name_and_count(ct, gm['att'], vm['att'])
             res[nc['name']] = nc['count']
 
@@ -543,7 +558,7 @@ def _grouped_stats_aux(helper,variable,grouping1,max_groups1,grouping2,max_group
     if (grouping1 == "dcc") or (grouping2 == "dcc"):
         dccs = _all_dccs(helper)
         for dcc in dccs:
-            rid_to_abbrev[dcc['RID']] = dcc['dcc_abbreviation']
+            rid_to_abbrev[dcc['project_RID']] = dcc['dcc_abbreviation']
 
     vm = VARIABLE_MAP[variable]
     gm1 = GROUPING_MAP[grouping1]
