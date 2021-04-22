@@ -4,6 +4,7 @@
    -{dccName} replaced by {dccId} throughout
    -"moniker" replaced by explicit DCC id and abbreviation
    -/dcc endpoint - returns list of DCC objects, not strings
+  -/stats/{variable}/{grouping1}/{grouping2} - add includeDCC parameter [#30]
 
 1.3 (March 29, 2021)
  -Updated to API version 0.0.4

@@ -551,25 +551,34 @@ def dcc_grouped_stats(dcc_id,variable,grouping):
     # return type is DCCGrouping
     return json.dumps(res)
 
-def _grouped_stats_aux(helper,variable,grouping1,max_groups1,grouping2,max_groups2):
-
-    # need to map project_RID to project_abbreviation if grouping=dcc
-    rid_to_abbrev = {}
-    if (grouping1 == "dcc") or (grouping2 == "dcc"):
-        dccs = _all_dccs(helper)
-        for dcc in dccs:
-            rid_to_abbrev[dcc['project_RID']] = dcc['dcc_abbreviation']
+def _grouped_stats_aux(helper,variable,grouping1,max_groups1,grouping2,max_groups2,add_dcc):
 
     vm = VARIABLE_MAP[variable]
     gm1 = GROUPING_MAP[grouping1]
     gm2 = GROUPING_MAP[grouping2]
+    grouping3 = None
+    gm3 = None
 
-    counts = list(StatsQuery(helper).entity(
+    if add_dcc and grouping1 != 'dcc' and grouping2 != 'dcc':
+        grouping3 = 'dcc'
+        gm3 = GROUPING_MAP[grouping3]
+
+    # need to map project_RID to project_abbreviation if grouping=dcc
+    rid_to_abbrev = {}
+    if (grouping1 == "dcc") or (grouping2 == "dcc") or (grouping3 == "dcc"):
+        dccs = _all_dccs(helper)
+        for dcc in dccs:
+            rid_to_abbrev[dcc['project_RID']] = dcc['dcc_abbreviation']
+    
+    sh = StatsQuery(helper).entity(
         vm['entity']).dimension(gm1['dimension'],
                                 show_nulls=SHOW_NULLS).dimension(gm2['dimension'],
-                                                                 show_nulls=SHOW_NULLS).fetch(headers=pass_headers()))
-
-    dim1_counts = {}
+                                                                 show_nulls=SHOW_NULLS)
+    if gm3 is not None:
+        sh = sh.dimension(gm3['dimension'], show_nulls=False)
+    
+    counts = list(sh.fetch(headers=pass_headers()))
+    dim_counts = {}
     res = []
 
     # StatsQuery output looks like this:
@@ -580,6 +589,10 @@ def _grouped_stats_aux(helper,variable,grouping1,max_groups1,grouping2,max_group
         dim1 = ct[gm1['att']]
         dim2 = ct[gm2['att']]
 
+        dim3 = None
+        if gm3 is not None:
+            dim3 = ct[gm3['att']]
+        
         if dim1 is None:
             dim1 = 'unknown'
         if dim2 is None:
@@ -590,26 +603,36 @@ def _grouped_stats_aux(helper,variable,grouping1,max_groups1,grouping2,max_group
             dim1 = rid_to_abbrev[dim1]
         if (grouping2 == "dcc"):
             dim2 = rid_to_abbrev[dim2]
+        if (grouping3 == "dcc"):
+            dim3 = rid_to_abbrev[dim3]
 
-        if not (dim1 in dim1_counts):
-            dim1_counts[dim1] = { grouping1 : dim1 }
-            res.append(dim1_counts[dim1])
+        key = dim1
+        if dim3 is not None:
+            key = dim1 + ":" + dim3
+            
+        if not (key in dim_counts):
+            dim_counts[key] = { grouping1 : dim1 }
+            if dim3 is not None:
+                dim_counts[key][grouping3] = dim3
+            res.append(dim_counts[key])
 
         # replace None with 0
         if ct[vm['att']] is None:
-            dim1_counts[dim1][dim2] = 0
+            dim_counts[key][dim2] = 0
         else:
-            dim1_counts[dim1][dim2] = ct[vm['att']]
+            dim_counts[key][dim2] = ct[vm['att']]
 
     return res
         
 # TODO - factor out parameter error-checking code
 
-# /dcc/stats/{variable}/{grouping}
+# /stats/{variable}/{grouping1}/{grouping2}
 # Returns statistics for the requested variable grouped by the specified aggregation.
 @app.route('/stats/<string:variable>/<string:grouping1>/<string:grouping2>', methods=['GET'])
-def grouped_stats(variable,grouping1,grouping2):
+def grouped_stats_by_dcc(variable,grouping1,grouping2):
     catalog_id = request.args.get("catalogId", type=int)
+    include_dcc = request.args.get("includeDCC") == "true"
+
     helper = _get_helper(catalog_id)
     if isinstance(helper, wrappers.Response):
         return helper
@@ -631,9 +654,8 @@ def grouped_stats(variable,grouping1,grouping2):
     if err is not None:
         return _error_response(err, 404)
 
-    res = _grouped_stats_aux(helper, variable, grouping1, None, grouping2, None)
-
     # return type is DCCGroupedStatistics, which is a list of DCCGrouping
+    res = _grouped_stats_aux(helper, variable, grouping1, None, grouping2, None, include_dcc)
     return json.dumps(res)
 
 # merge attributes within groups using a global limit on the number of attributes
@@ -787,7 +809,7 @@ def grouped_stats_other(variable,grouping1,maxgroups1,grouping2,maxgroups2):
         return _error_response(err, 404)
 
     # returns list of DCCGrouping
-    res = _grouped_stats_aux(helper, variable, grouping1, maxgroups1, grouping2, maxgroups2)
+    res = _grouped_stats_aux(helper, variable, grouping1, maxgroups1, grouping2, maxgroups2, False)
 
     # merge groups2 (i.e., merge counts within each DCCGrouping)
     if maxgroups2 is not None:
@@ -802,7 +824,6 @@ def grouped_stats_other(variable,grouping1,maxgroups1,grouping2,maxgroups2):
 
     # return type is DCCGroupedStatistics, which is a list of DCCGrouping
     return json.dumps(res)
-
 
 if __name__ == '__main__':
     app.run(threaded=True)

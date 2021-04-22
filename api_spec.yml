@@ -282,6 +282,12 @@ paths:
         required: true
         schema:
           type: string
+      - name: includeDCC
+        in: query
+        description: Whether to include DCC as a grouping, assuming it is not already specified.
+        required: false
+        schema:
+          type: boolean
       responses:
         200:
           description: Successful operation.
@@ -356,6 +362,7 @@ paths:
               schema:
                 type: string
               description: Human friendly reason for the error or exception.
+
 components:
   schemas:
     DCC:
@@ -602,6 +609,11 @@ components:
         data_type:
           type: string
           minLength: 5
+        dcc:
+          type: string
+          minLength: 3
+          maxLength: 64
+          pattern: "^[0-9A-Za-z_-]+$"
       additionalProperties:
         type: integer
       example:
