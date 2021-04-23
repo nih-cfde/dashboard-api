@@ -261,7 +261,7 @@ def dcc_info(dcc_id):
         'abbreviation': dcc['dcc_abbreviation'],
         'complete_name': dcc['dcc_name'],
         'description': dcc['dcc_description'],
-        # TODO - current schema has primary_dcc_contact, but no info on PIs
+        # TODO - current schema has primary contact, but no explicit info on PIs
         'principal_investigators': [],
         'url': dcc['dcc_url'],
         'project_count': counts['project_count'],
@@ -559,7 +559,7 @@ def _grouped_stats_aux(helper,variable,grouping1,max_groups1,grouping2,max_group
     grouping3 = None
     gm3 = None
 
-    if add_dcc and grouping1 != 'dcc' and grouping2 != 'dcc':
+    if add_dcc and grouping1 != 'dcc':
         grouping3 = 'dcc'
         gm3 = GROUPING_MAP[grouping3]
 
@@ -574,7 +574,7 @@ def _grouped_stats_aux(helper,variable,grouping1,max_groups1,grouping2,max_group
         vm['entity']).dimension(gm1['dimension'],
                                 show_nulls=SHOW_NULLS).dimension(gm2['dimension'],
                                                                  show_nulls=SHOW_NULLS)
-    if gm3 is not None:
+    if gm3 is not None and grouping2 != 'dcc':
         sh = sh.dimension(gm3['dimension'], show_nulls=False)
     
     counts = list(sh.fetch(headers=pass_headers()))
@@ -591,7 +591,10 @@ def _grouped_stats_aux(helper,variable,grouping1,max_groups1,grouping2,max_group
 
         dim3 = None
         if gm3 is not None:
-            dim3 = ct[gm3['att']]
+            if grouping2 == 'dcc':
+                dim3 = dim2
+            else:
+                dim3 = ct[gm3['att']]
         
         if dim1 is None:
             dim1 = 'unknown'
