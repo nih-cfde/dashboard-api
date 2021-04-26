@@ -551,7 +551,7 @@ def dcc_grouped_stats(dcc_id,variable,grouping):
     # return type is DCCGrouping
     return json.dumps(res)
 
-def _grouped_stats_aux(helper,variable,grouping1,max_groups1,grouping2,max_groups2,add_dcc):
+def _grouped_stats_aux(helper,variable,grouping1,grouping2,add_dcc):
 
     vm = VARIABLE_MAP[variable]
     gm1 = GROUPING_MAP[grouping1]
@@ -658,7 +658,7 @@ def grouped_stats_by_dcc(variable,grouping1,grouping2):
         return _error_response(err, 404)
 
     # return type is DCCGroupedStatistics, which is a list of DCCGrouping
-    res = _grouped_stats_aux(helper, variable, grouping1, None, grouping2, None, include_dcc)
+    res = _grouped_stats_aux(helper, variable, grouping1, grouping2, include_dcc)
     return json.dumps(res)
 
 # merge attributes within groups using a global limit on the number of attributes
@@ -812,7 +812,7 @@ def grouped_stats_other(variable,grouping1,maxgroups1,grouping2,maxgroups2):
         return _error_response(err, 404)
 
     # returns list of DCCGrouping
-    res = _grouped_stats_aux(helper, variable, grouping1, maxgroups1, grouping2, maxgroups2, False)
+    res = _grouped_stats_aux(helper, variable, grouping1, grouping2, False)
 
     # merge groups2 (i.e., merge counts within each DCCGrouping)
     if maxgroups2 is not None:
