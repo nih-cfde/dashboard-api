@@ -121,7 +121,7 @@ def _id_to_dcc_project_nid(helper, dcc_id):
     return None
 
 def _all_dccs(helper):
-    dcc = helper.builder.CFDE.dcc
+    path = helper.builder.CFDE.dcc.path
 
     res = path.attributes(
         path.dcc.id,
