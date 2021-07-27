@@ -423,7 +423,7 @@ def _get_dcc_entity_counts(helper, dcc_nid, counts):
         proj_path = get_proj_path()
         s = helper.builder.CFDE.subject.alias('s')
         cf = helper.builder.CFDE.core_fact.alias('cf')
-        subj_path = proj_path.link(cf).link(s, on=(proj_path.pipt.member_project == cf.project))
+        subj_path = proj_path.link(cf, on=(proj_path.pipt.member_project == cf.project)).link(s)
         return subj_path
 
     # path to DCCs' biosamples
@@ -431,7 +431,7 @@ def _get_dcc_entity_counts(helper, dcc_nid, counts):
         proj_path = get_proj_path()
         b = helper.builder.CFDE.biosample.alias('b')
         cf = helper.builder.CFDE.core_fact.alias('cf')
-        biosample_path = proj_path.link(cf).link(b, on=(proj_path.pipt.member_project == cf.project))
+        biosample_path = proj_path.link(cf, on=(proj_path.pipt.member_project == cf.project)).link(b)
         return biosample_path
 
     # path to DCCs' files
@@ -439,7 +439,7 @@ def _get_dcc_entity_counts(helper, dcc_nid, counts):
         proj_path = get_proj_path()
         f = helper.builder.CFDE.file.alias('f')
         cf = helper.builder.CFDE.core_fact.alias('cf')
-        file_path = proj_path.link(cf).link(f, on=(proj_path.pipt.member_project == cf.project))
+        file_path = proj_path.link(cf, on=(proj_path.pipt.member_project == cf.project)).link(f)
         return file_path
 
     # project counts - all and only children of top-level DCC project node
