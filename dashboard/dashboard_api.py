@@ -3,6 +3,7 @@ import os
 import re
 import sys
 import atexit
+import datetime
 from requests.exceptions import HTTPError
 from flask import Flask, request, make_response, wrappers
 from cfde_deriva.dashboard_queries import StatsQuery, DashboardQueryHelper
@@ -135,6 +136,63 @@ def _all_dccs(helper):
         path.dcc.project.alias("project_nid")
     ).fetch(headers=pass_headers())
     return res
+
+def _decode_ermrest_snaptime(s):
+    """Decode ERMrest's native snaptime to a timestamp
+
+    A snaptime like "2WG-7RJ8-8F8P" is a custom base32 encoding of a
+    64-bit timestamp. 13 symbols represent a 65 bit vector, and
+    leading zero fields can be omitted.
+
+    bits 1..64: integer most significant bit first
+    bit 65: discarded pad bit
+
+    the integer is the number of microseconds since 1970-1-1 epoch
+    time.
+
+    """
+    epoch = datetime.datetime.fromisoformat('1970-01-01 00:00:00')
+    one_second = datetime.timedelta(seconds=1)
+
+    symbol_to_val = {
+        '0123456789ABCDEFGHJKMNPQRSTVWXYZ'[i]: i
+        for i in range(32)
+    }
+    # these are considered equivalent for transcription
+    symbol_to_val.update({
+        'O': 0,
+        'I': 1,
+        'L': 1,
+    })
+
+    s = s.replace('-', '')    # strip zero-info hyphens
+
+    # decode 5 bits per symbol
+    accum = 0
+    for x in s:
+        accum = (accum << 5) + symbol_to_val[x]
+
+    # drop final pad bit
+    accum = accum >> 1
+
+    # interpret as microseconds since epoch
+    ts = epoch + one_second * (accum / 1000000)
+    return ts
+
+def _ermrest_catalog_snaptime(helper):
+    """Get and decode catalog snaptime
+
+    GET /ermrest/catalog/{id} produces JSON like:
+
+    { ..."snaptime": "2WF-XTV5-J226", ... }
+
+    where the value can be decoded to a timestamp for the catalog's
+    content as a whole
+
+    """
+    resp = helper.catalog.get('/').json()
+    snaptime = resp['snaptime']
+    return _decode_ermrest_snaptime(snaptime)
 
 # -------------------------------------------------------------------------
 # API methods for https://github.com/nih-cfde/api/blob/master/api_spec.yml
