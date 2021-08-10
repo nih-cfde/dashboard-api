@@ -8,7 +8,9 @@ from requests.exceptions import HTTPError
 from flask import Flask, request, make_response, wrappers
 from cfde_deriva.dashboard_queries import StatsQuery, DashboardQueryHelper
 from deriva.core import DEFAULT_HEADERS
+from deriva.core.utils import core_utils
 from deriva.core.datapath import Min, Max, Cnt, CntD, Avg, Sum, Bin, DataPathException
+
 
 app = Flask(__name__)
 app.config.from_object('dashboard.dashboard_config')
@@ -250,8 +252,8 @@ def all_dcc_info():
         'subject_count': counts['subject_count'],
         'biosample_count': counts['biosample_count'],
         'file_count': counts['file_count'],
-        'project_count': counts['project_count'],
-        'last_updated': last_updated,
+        'project_count': counts['project_count']
+        #'last_updated': last_updated,
     })
 
 # /dcc/{dccId}
@@ -869,6 +871,31 @@ def grouped_stats_other(variable,grouping1,maxgroups1,grouping2,maxgroups2):
 
     # return type is DCCGroupedStatistics, which is a list of DCCGrouping
     return json.dumps(res)
+
+
+# /saved_queries
+# Returns a list of saved queries for the logged in user
+# User auth maintained by headers being passed through. See pass_headers()
+@app.route('/user/saved_queries', methods=['GET'])
+def saved_queries():
+
+    registry_helper = _get_helper('registry')
+    path = registry_helper.builder.CFDE.saved_query
+    scheme = "http" if HOSTNAME == "localhost" else "https"
+    
+    # told not to pass_headers if instantiating ermrest catalog with a user credential
+    rows = path.entities().fetch(headers=pass_headers())
+
+    query_url_string = scheme + "://" + HOSTNAME + "/chaise/recordset/#1/{}:{}/*::facets::{}"
+
+    return_obj = [ {"name" : row["name"], 
+                    "description" : row["description"], 
+                    "query" : query_url_string.format(row["schema_name"], row["table_name"], row["encoded_facets"]),
+                    "last_execution_ts" : row["last_execution_time"],
+                    "creation_ts" : row["RCT"]} for row in rows ]
+
+    return json.dumps(return_obj)
+
 
 if __name__ == '__main__':
     app.run(threaded=True)
