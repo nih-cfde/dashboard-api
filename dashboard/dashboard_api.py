@@ -880,6 +880,9 @@ def grouped_stats_other(variable,grouping1,maxgroups1,grouping2,maxgroups2):
 def saved_queries():
 
     registry_helper = _get_helper('registry')
+    if isinstance(registry_helper, wrappers.Response):
+        return registry_helper
+
     path = registry_helper.builder.CFDE.saved_query
     scheme = "http" if HOSTNAME == "localhost" else "https"
     
