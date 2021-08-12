@@ -873,31 +873,23 @@ def grouped_stats_other(variable,grouping1,maxgroups1,grouping2,maxgroups2):
     return json.dumps(res)
 
 
-# /saved_queries
+# /user/saved_queries
 # Returns a list of saved queries for the logged in user
 # User auth maintained by headers being passed through. See pass_headers()
 @app.route('/user/saved_queries', methods=['GET'])
 def saved_queries():
-
     scheme = "http" if HOSTNAME == "localhost" else "https"
-    #registry_helper = _get_helper('registry')
-    #if isinstance(registry_helper, wrappers.Response):
-    #    return registry_helper
-
     registry_catalog = ErmrestCatalog(
         scheme,
         HOSTNAME,
         "registry",
         caching=False
     )
-    # debugging
-    print(dict(request.headers))
 
     registry_builder = registry_catalog.getPathBuilder()
     path = registry_builder.CFDE.saved_query
-    #path = registry_helper.builder.CFDE.saved_query
     
-    # told not to pass_headers if instantiating ermrest catalog with a user credential
+    # sending headers because not instantiating ermrest catalog with a user credential
     rows = path.entities().fetch(headers=pass_headers())
 
     query_url_string = scheme + "://" + HOSTNAME + "/chaise/recordset/#1/{}:{}/*::facets::{}"
@@ -909,7 +901,6 @@ def saved_queries():
                     "creation_ts" : row["RCT"]} for row in rows ]
 
     return json.dumps(return_obj)
-
 
 if __name__ == '__main__':
     app.run(threaded=True)
