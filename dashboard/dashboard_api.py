@@ -7,7 +7,7 @@ import datetime
 from requests.exceptions import HTTPError
 from flask import Flask, request, make_response, wrappers
 from cfde_deriva.dashboard_queries import StatsQuery, DashboardQueryHelper
-from deriva.core import DEFAULT_HEADERS
+from deriva.core import DEFAULT_HEADERS, ErmrestCatalog
 from deriva.core.utils import core_utils
 from deriva.core.datapath import Min, Max, Cnt, CntD, Avg, Sum, Bin, DataPathException
 
@@ -879,12 +879,23 @@ def grouped_stats_other(variable,grouping1,maxgroups1,grouping2,maxgroups2):
 @app.route('/user/saved_queries', methods=['GET'])
 def saved_queries():
 
-    registry_helper = _get_helper('registry')
-    if isinstance(registry_helper, wrappers.Response):
-        return registry_helper
-
-    path = registry_helper.builder.CFDE.saved_query
     scheme = "http" if HOSTNAME == "localhost" else "https"
+    #registry_helper = _get_helper('registry')
+    #if isinstance(registry_helper, wrappers.Response):
+    #    return registry_helper
+
+    registry_catalog = ErmrestCatalog(
+        scheme,
+        HOSTNAME,
+        "registry",
+        caching=False
+    )
+    # debugging
+    print(dict(request.headers))
+
+    registry_builder = registry_catalog.getPathBuilder()
+    path = registry_builder.CFDE.saved_query
+    #path = registry_helper.builder.CFDE.saved_query
     
     # told not to pass_headers if instantiating ermrest catalog with a user credential
     rows = path.entities().fetch(headers=pass_headers())
