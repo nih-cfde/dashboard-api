@@ -1,5 +1,5 @@
 DEBUG = False
 SHOW_NULLS = True
 PASS_HEADERS = True
-DERIVA_SERVERNAME = "localhost"
+DERIVA_SERVERNAME = "app-dev.nih-cfde.org"
 DERIVA_DEFAULT_CATALOGID = 1
