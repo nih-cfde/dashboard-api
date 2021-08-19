@@ -4,6 +4,7 @@ import re
 import sys
 import atexit
 import datetime
+import urllib.parse
 from requests.exceptions import HTTPError
 from flask import Flask, request, make_response, wrappers
 from cfde_deriva.dashboard_queries import StatsQuery, DashboardQueryHelper
@@ -888,7 +889,6 @@ def saved_queries():
 
     registry_builder = registry_catalog.getPathBuilder()
     path = registry_builder.CFDE.saved_query
-    
     # sending headers because not instantiating ermrest catalog with a user credential
     rows = path.entities().fetch(headers=pass_headers())
 
@@ -899,6 +899,66 @@ def saved_queries():
                     "query" : query_url_string.format(row["schema_name"], row["table_name"], row["encoded_facets"]),
                     "last_execution_ts" : row["last_execution_time"],
                     "creation_ts" : row["RCT"]} for row in rows ]
+
+    return json.dumps(return_obj)
+
+
+# /user/favorites
+# User auth maintained by headers being passed through. See pass_headers()
+@app.route('/user/favorites', methods=['GET'])
+def favorites():
+
+    scheme = "http" if HOSTNAME == "localhost" else "https"
+    registry_catalog = ErmrestCatalog(
+        scheme,
+        HOSTNAME,
+        "registry",
+        caching=False
+    )
+
+    # build path (query) for favorite anatomies
+    registry_builder = registry_catalog.getPathBuilder()
+    path = registry_builder.CFDE.favorite_anatomy
+    path = path.link(registry_builder.CFDE.anatomy) # links in the anatomy record for each favorite including: id, name, description
+
+    # sending headers because we're not instantiating the ermrest catalog with a user credential
+    # Note: If a user has access to someone else's favorites, those will be returned since we are not filtering as in:
+    # path = path.filter(path.favorite_anatomy.user_id == 'some user id')
+    # This applies to the additional 'favorite' queries below
+    rows = path.entities().fetch(headers=pass_headers())
+    
+    url_string = scheme + "://" + HOSTNAME + "/chaise/record/#1/CFDE:anatomy/id={}"
+    
+    favorite_anatomies = [ {"name" : row["name"],
+                            "description" : row["description"],
+                            "url" : url_string.format(urllib.parse.quote(row["id"])) } for row in rows]
+    
+    # build path (query) for favorite dccs
+    path = registry_builder.CFDE.favorite_dcc
+    path = path.link(registry_builder.CFDE.dcc) # links in the dcc record for each favorite including: id, name, description
+    rows = path.entities().fetch(headers=pass_headers())
+    
+    url_string = scheme + "://" + HOSTNAME + "/chaise/record/#1/CFDE:dcc/id={}"
+
+    favorite_dccs = [ {"name" : row["dcc_name"],
+                       "description" : row["description"],
+                       "abbrev" : row["dcc_abbreviation"],
+                       "url" : url_string.format(urllib.parse.quote(row["id"])) } for row in rows]
+    
+    path = registry_builder.CFDE.favorite_assay_type
+    path = path.link(registry_builder.CFDE.assay_type)
+    rows = path.entities().fetch(headers=pass_headers())
+    
+    url_string = scheme + "://" + HOSTNAME + "/chaise/record/#1/CFDE:assay_type/id={}"
+
+    favorite_assays = [ {"name" : row["name"],
+                         "description" : row["description"],
+                         "url" : url_string.format(urllib.parse.quote(row["id"])) } for row in rows]
+
+    return_obj = { "anatomy" : favorite_anatomies,
+                   "dcc" : favorite_dccs,
+                   "assays" : favorite_assays
+    }
 
     return json.dumps(return_obj)
 
