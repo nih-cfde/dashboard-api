@@ -891,7 +891,7 @@ def saved_queries():
     path = registry_builder.CFDE.saved_query
     # sending headers because not instantiating ermrest catalog with a user credential
     rows = path.entities().fetch(headers=pass_headers())
-
+    
     query_url_string = scheme + "://" + HOSTNAME + "/chaise/recordset/#1/{}:{}/*::facets::{}"
 
     return_obj = [ {"name" : row["name"], 
@@ -926,7 +926,7 @@ def favorites():
     # path = path.filter(path.favorite_anatomy.user_id == 'some user id')
     # This applies to the additional 'favorite' queries below
     rows = path.entities().fetch(headers=pass_headers())
-    
+
     url_string = scheme + "://" + HOSTNAME + "/chaise/record/#1/CFDE:anatomy/id={}"
     
     favorite_anatomies = [ {"name" : row["name"],
@@ -942,9 +942,9 @@ def favorites():
 
     favorite_dccs = [ {"name" : row["dcc_name"],
                        "description" : row["description"],
-                       "abbrev" : row["dcc_abbreviation"],
+                       "abbreviation" : row["dcc_abbreviation"],
                        "url" : url_string.format(urllib.parse.quote(row["id"])) } for row in rows]
-    
+
     path = registry_builder.CFDE.favorite_assay_type
     path = path.link(registry_builder.CFDE.assay_type)
     rows = path.entities().fetch(headers=pass_headers())
@@ -957,7 +957,7 @@ def favorites():
 
     return_obj = { "anatomy" : favorite_anatomies,
                    "dcc" : favorite_dccs,
-                   "assays" : favorite_assays
+                   "assay" : favorite_assays
     }
 
     return json.dumps(return_obj)
