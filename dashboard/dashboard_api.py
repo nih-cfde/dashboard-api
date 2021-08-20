@@ -8,7 +8,7 @@ import urllib.parse
 from requests.exceptions import HTTPError
 from flask import Flask, request, make_response, wrappers
 from cfde_deriva.dashboard_queries import StatsQuery, DashboardQueryHelper
-from deriva.core import DEFAULT_HEADERS, ErmrestCatalog
+from deriva.core import DEFAULT_HEADERS, DEFAULT_SESSION_CONFIG, ErmrestCatalog
 from deriva.core.utils import core_utils
 from deriva.core.datapath import Min, Max, Cnt, CntD, Avg, Sum, Bin, DataPathException
 
@@ -56,6 +56,9 @@ def handle_datapath_exception(error):
     return _error_response(str(error),
                            error.reason.response.status_code if isinstance(error.reason, HTTPError) else 500)
 
+def _get_scheme():
+    return "http" if HOSTNAME == "localhost" else "https"
+
 # Retrieve DashboardQueryHelper for the specified catalogid, using default catalogid if None.
 #
 def _get_helper(catalog_id):
@@ -67,7 +70,7 @@ def _get_helper(catalog_id):
         try:
             helpers[catalog_id] = DashboardQueryHelper(HOSTNAME,
                                                        catalog_id,
-                                                       scheme="http" if HOSTNAME == "localhost" else "https",
+                                                       scheme=_get_scheme(),
                                                        caching=False)
         # invalid catalog id
         except HTTPError as e:
@@ -297,13 +300,23 @@ def dcc_info(dcc_id):
     counts = _get_dcc_entity_counts(helper, dcc['nid'], { 'subject': True, 'file': True, 'biosample': True, 'project': True })
 
     # interrogate registry for datapackage RID
-    r_helper = _get_helper('registry')
-    
+    session_config = DEFAULT_SESSION_CONFIG.copy()
+    session_config["allow_retry_on_all_methods"] = True
+    r_catalog = ErmrestCatalog(_get_scheme(), HOSTNAME, 'registry', caching=False, session_config=session_config)
+    r_builder = r_catalog.getPathBuilder()
+    r_schema = r_catalog.getCatalogModel().schemas['CFDE']
+
     # TODO - use a more direct approach, if possible:
-    dp_path = r_helper.builder.CFDE.datapackage.alias('dp')
-    dp_path = dp_path.filter(dp_path.dp.review_summary_url.regexp('catalogId=%s$' % (catalog_id,)))
+    dp_path = r_builder.CFDE.datapackage
+    dp_path = dp_path.filter(dp_path.review_summary_url.regexp('catalogId=%s$' % (catalog_id,)))
     res = dp_path.entities().fetch(headers=pass_headers())
-    dp_rid = res[0]['RID'] if res else None
+
+    dp_rid = None
+    last_updated = None    
+        
+    if res:
+        dp_rid = res[0]['RID']
+        last_updated = res[0]['submission_time']
 
     return json.dumps({
         'id': dcc['id'],
@@ -318,7 +331,7 @@ def dcc_info(dcc_id):
         'subject_count': counts['subject_count'],
         'biosample_count': counts['biosample_count'],
         'file_count': counts['file_count'],
-        'last_updated': dcc['RMT'],
+        'last_updated': last_updated,
         'nid': dcc['nid'],
         'datapackage_RID': dp_rid,
     })
