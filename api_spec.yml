@@ -5,7 +5,7 @@ info:
   license:
     name: Apache 2.0
     url: http://www.apache.org/licenses/LICENSE-2.0.html
-  version: 0.0.6
+  version: 0.0.7
 tags:
    - name: "DCC"
      description: "Get information about a single specific DCC."
@@ -375,7 +375,28 @@ paths:
               schema:
                 $ref: '#/components/schemas/SavedQueryList'
         404:
-          description: The specified DERIVA catalog could not be found.
+          description: The DERIVA registry catalog could not be found.
+        5XX:
+          description: An unexpected error occurred.
+          headers:
+            X-CFDE-Error:
+              schema:
+                type: string
+              description: Human friendly reason for the error or exception.
+  /user/favorites:
+    get:
+      description: Returns a representation of favorites for the authenticated user.
+      tags:
+        - User
+      responses:
+        200:
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Favorites'
+        404:
+          description: The DERIVA registry catalog could not be found.
         5XX:
           description: An unexpected error occurred.
           headers:
@@ -479,6 +500,93 @@ components:
         type: array
         items:
           $ref: '#/components/schemas/SavedQuery'
+    Favorites:
+      type: object
+      description: An object with 3 keys; 'dcc', 'anatomy', 'assay'. Each value is an array of Favorite instances
+      properties:
+        dcc:
+          type: array
+          items:
+            $ref: '#/components/schemas/FavoriteDCC'
+        anatomy:
+          type: array
+          items:
+            $ref: '#/components/schemas/FavoriteAnatomy'
+        assay:
+          type: array
+          items:
+            $ref: '#/components/schemas/FavoriteAssay'
+    FavoriteAnatomy:
+      type: object
+      description: An object that describes a single favorite.
+      required:
+        - name
+        - description
+        - url
+      properties:
+        name:
+          type: string
+          minLength: 3
+          maxLength: 64
+          pattern: ^[0-9A-Za-z][0-9A-Za-z_ -]+[0-9A-Za-z]$
+        description:
+          type: string
+          minLength: 3
+          maxLength: 256
+        url:
+          type: string
+          minLength: 3
+          maxLength: 128
+    FavoriteAssay:
+      type: object
+      description: An object that describes a single favorite.
+      required:
+        - name
+        - description
+        - url
+      properties:
+        name:
+          type: string
+          minLength: 3
+          maxLength: 64
+          pattern: ^[0-9A-Za-z][0-9A-Za-z_ -]+[0-9A-Za-z]$
+        description:
+          type: string
+          minLength: 3
+          maxLength: 256
+        url:
+          type: string
+          minLength: 3
+          maxLength: 128
+    FavoriteDCC:
+      type: object
+      description: An object that describes a single favorite.
+      required:
+        - name
+        - description
+        - abbreviation
+        - url
+      properties:
+        name:
+          type: string
+          minLength: 3
+          maxLength: 64
+          pattern: ^[0-9A-Za-z][0-9A-Za-z_ -]+[0-9A-Za-z]$
+        description:
+          type: string
+          minLength: 3
+          maxLength: 256
+        abbreviation:
+          type: string
+          minLength: 3
+          maxLength: 64
+          pattern: ^[0-9A-Za-z_-]+$
+        url:
+          type: string
+          minLength: 3
+          maxLength: 128
+
+
     CatalogGeneralInfo:
       type: object
       description: An object with general information about a catalog/set of DCCs.
