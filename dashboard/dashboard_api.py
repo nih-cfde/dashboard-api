@@ -905,13 +905,13 @@ def saved_queries():
     # sending headers because not instantiating ermrest catalog with a user credential
     rows = path.entities().fetch(headers=pass_headers())
     
-    query_url_string = scheme + "://" + HOSTNAME + "/chaise/recordset/#1/{}:{}/*::facets::{}"
+    query_url_string = scheme + "://" + HOSTNAME + "/chaise/recordset/#1/{}:{}/*::facets::{}?savedQueryRid={}"
 
     return_obj = [ {"name" : row["name"], 
                     "description" : row["description"], 
-                    "query" : query_url_string.format(row["schema_name"], row["table_name"], row["encoded_facets"]),
+                    "query" : query_url_string.format(row["schema_name"], row["table_name"], row["encoded_facets"], row["RID"]),
                     "last_execution_ts" : row["last_execution_time"],
-                    "creation_ts" : row["RCT"]} for row in rows ]
+                    "creation_ts" : row["RCT"] } for row in rows ]
 
     return json.dumps(return_obj)
 
