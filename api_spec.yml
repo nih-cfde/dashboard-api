@@ -586,7 +586,6 @@ components:
           minLength: 3
           maxLength: 128
 
-
     CatalogGeneralInfo:
       type: object
       description: An object with general information about a catalog/set of DCCs.
