@@ -3,11 +3,15 @@ import os
 import re
 import sys
 import atexit
+import datetime
+import urllib.parse
 from requests.exceptions import HTTPError
 from flask import Flask, request, make_response, wrappers
 from cfde_deriva.dashboard_queries import StatsQuery, DashboardQueryHelper
-from deriva.core import DEFAULT_HEADERS
+from deriva.core import DEFAULT_HEADERS, DEFAULT_SESSION_CONFIG, ErmrestCatalog
+from deriva.core.utils import core_utils
 from deriva.core.datapath import Min, Max, Cnt, CntD, Avg, Sum, Bin, DataPathException
+
 
 app = Flask(__name__)
 app.config.from_object('dashboard.dashboard_config')
@@ -52,6 +56,9 @@ def handle_datapath_exception(error):
     return _error_response(str(error),
                            error.reason.response.status_code if isinstance(error.reason, HTTPError) else 500)
 
+def _get_scheme():
+    return "http" if HOSTNAME == "localhost" else "https"
+
 # Retrieve DashboardQueryHelper for the specified catalogid, using default catalogid if None.
 #
 def _get_helper(catalog_id):
@@ -63,7 +70,7 @@ def _get_helper(catalog_id):
         try:
             helpers[catalog_id] = DashboardQueryHelper(HOSTNAME,
                                                        catalog_id,
-                                                       scheme="http" if HOSTNAME == "localhost" else "https",
+                                                       scheme=_get_scheme(),
                                                        caching=False)
         # invalid catalog id
         except HTTPError as e:
@@ -83,20 +90,27 @@ def _get_helper(catalog_id):
 def pass_headers():
     return dict(request.headers) if PASS_HEADERS else DEFAULT_HEADERS
 
+# NOTE: there is no "RMT" system timestamp anymore for portal content records...
+# options:
+#  1. drop concept since it didn't really mean something for C2M2/DCCs
+#  2. expose C2M2 creation_time which is nullable but could represent an event time in community
+#  3. find some catalog-wide timestamp representing content load time?
+
 def _id_to_dcc(helper, dcc_id):
-    dcc = helper.builder.CFDE.dcc.alias('dcc')
+    dcc = helper.builder.CFDE.dcc
     path = dcc.filter(dcc.id == dcc_id)
 
     res = path.attributes(
         path.dcc.id,
-        path.dcc.RID,
-        path.dcc.RMT,
+        path.dcc.nid,
+        # RMT no longer exists
         path.dcc.dcc_name,
         path.dcc.dcc_description,
         path.dcc.dcc_url,
         path.dcc.contact_name,
         path.dcc.contact_email,
         path.dcc.dcc_abbreviation,
+        path.dcc.project.alias('project_nid'),
     ).fetch(headers=pass_headers())
 
     if len(res) == 1:
@@ -104,38 +118,87 @@ def _id_to_dcc(helper, dcc_id):
 
     return None
 
-def _id_to_dcc_project(helper, dcc_id):
-    dcc = helper.builder.CFDE.dcc.alias('dcc')
-    p = helper.builder.CFDE.project.alias('p')
-    path = dcc.filter(dcc.id == dcc_id).link(p)
+def _id_to_dcc_project_nid(helper, dcc_id):
+    res = _id_to_dcc(helper, dcc_id)
 
-    res = path.attributes(
-        path.p.RID
-    ).fetch(headers=pass_headers())
-
-    if len(res) == 1:
-        return res[0]
+    if res is not None:
+        return res['project_nid']
 
     return None
 
 def _all_dccs(helper):
-    dcc = helper.builder.CFDE.dcc.alias('dcc')
-    p = helper.builder.CFDE.project.alias('p')
-    path = dcc.link(p)
-    
+    path = helper.builder.CFDE.dcc.path
+
     res = path.attributes(
         path.dcc.id,
-        path.dcc.RID,
-        path.dcc.RMT,
+        path.dcc.nid,
+        # RMT no longer exists
         path.dcc.dcc_name,
         path.dcc.dcc_description,
         path.dcc.dcc_url,
         path.dcc.contact_name,
         path.dcc.contact_email,
         path.dcc.dcc_abbreviation,
-        path.p.RID.alias("project_RID")
+        path.dcc.project.alias("project_nid")
     ).fetch(headers=pass_headers())
     return res
+
+def _decode_ermrest_snaptime(s):
+    """Decode ERMrest's native snaptime to a timestamp
+
+    A snaptime like "2WG-7RJ8-8F8P" is a custom base32 encoding of a
+    64-bit timestamp. 13 symbols represent a 65 bit vector, and
+    leading zero fields can be omitted.
+
+    bits 1..64: integer most significant bit first
+    bit 65: discarded pad bit
+
+    the integer is the number of microseconds since 1970-1-1 epoch
+    time.
+
+    """
+    epoch = datetime.datetime.fromisoformat('1970-01-01 00:00:00')
+    one_second = datetime.timedelta(seconds=1)
+
+    symbol_to_val = {
+        '0123456789ABCDEFGHJKMNPQRSTVWXYZ'[i]: i
+        for i in range(32)
+    }
+    # these are considered equivalent for transcription
+    symbol_to_val.update({
+        'O': 0,
+        'I': 1,
+        'L': 1,
+    })
+
+    s = s.replace('-', '')    # strip zero-info hyphens
+
+    # decode 5 bits per symbol
+    accum = 0
+    for x in s:
+        accum = (accum << 5) + symbol_to_val[x]
+
+    # drop final pad bit
+    accum = accum >> 1
+
+    # interpret as microseconds since epoch
+    ts = epoch + one_second * (accum / 1000000)
+    return ts
+
+def _ermrest_catalog_snaptime(helper):
+    """Get and decode catalog snaptime
+
+    GET /ermrest/catalog/{id} produces JSON like:
+
+    { ..."snaptime": "2WF-XTV5-J226", ... }
+
+    where the value can be decoded to a timestamp for the catalog's
+    content as a whole
+
+    """
+    resp = helper.catalog.get('/').json()
+    snaptime = resp['snaptime']
+    return _decode_ermrest_snaptime(snaptime)
 
 # -------------------------------------------------------------------------
 # API methods for https://github.com/nih-cfde/api/blob/master/api_spec.yml
@@ -157,8 +220,8 @@ def dcc_list():
         'complete_name': dcc['dcc_name'],
         'description': dcc['dcc_description'],
         'url': dcc['dcc_url'],
-        'last_updated': dcc['RMT'],
-        'RID': dcc['RID'],
+        # 'last_updated': is not a C2M2 concept for DCCs!
+        'nid': dcc['nid'],
     } for dcc in dccs]
 
     return json.dumps(dcc_list)
@@ -180,26 +243,21 @@ def all_dcc_info():
     num_biosamples = 0
     num_files = 0
     num_projects = 0
-    last_updated = None
 
     # subject, file, biosample, and project counts
     counts = _get_dcc_entity_counts(helper, None, { 'subject': True, 'file': True, 'biosample': True, 'project': True })
     # all DCCs
     dccs = _all_dccs(helper)
 
-    for dcc in dccs:
-        if last_updated is None:
-            last_updated = dcc['RMT']
-        if dcc['RMT'] > last_updated:
-            last_updated = dcc['RMT']
+    # last_updated = max([ dcc.['last_updated'] for dcc in dccs ])
 
     return json.dumps({
         'catalog_id': catalog_id,
         'subject_count': counts['subject_count'],
         'biosample_count': counts['biosample_count'],
         'file_count': counts['file_count'],
-        'project_count': counts['project_count'],
-        'last_updated': last_updated,
+        'project_count': counts['project_count']
+        #'last_updated': last_updated,
     })
 
 # /dcc/{dccId}
@@ -217,7 +275,7 @@ def all_dcc_info():
 #      - biosample_count
 #      - file_count
 #      - last_updated
-#      - RID
+#      - nid
 #      - datapackage_RID
 #
 @app.route('/dcc/<string:dcc_id>', methods=['GET'])
@@ -239,22 +297,26 @@ def dcc_info(dcc_id):
     # DCC found
 
     # subject, file, and biosample counts
-    counts = _get_dcc_entity_counts(helper, dcc['RID'], { 'subject': True, 'file': True, 'biosample': True, 'project': True })
+    counts = _get_dcc_entity_counts(helper, dcc['nid'], { 'subject': True, 'file': True, 'biosample': True, 'project': True })
 
     # interrogate registry for datapackage RID
-    r_helper = _get_helper('registry')
-    
-    dp_path = r_helper.builder.CFDE.datapackage.alias('dp')
-    res = dp_path.entities().fetch(headers=pass_headers())
-    dp_rid = None
+    session_config = DEFAULT_SESSION_CONFIG.copy()
+    session_config["allow_retry_on_all_methods"] = True
+    r_catalog = ErmrestCatalog(_get_scheme(), HOSTNAME, 'registry', caching=False, session_config=session_config)
+    r_builder = r_catalog.getPathBuilder()
+    r_schema = r_catalog.getCatalogModel().schemas['CFDE']
 
     # TODO - use a more direct approach, if possible:
-    regex = re.compile('^.*catalogId=' + str(catalog_id) + '$')
+    dp_path = r_builder.CFDE.datapackage
+    dp_path = dp_path.filter(dp_path.review_summary_url.regexp('catalogId=%s$' % (catalog_id,)))
+    res = dp_path.entities().fetch(headers=pass_headers())
 
-    for r in res:
-        review_url = r['review_summary_url']
-        if (review_url is not None) and re.match(regex, review_url):
-            dp_rid = r['RID']
+    dp_rid = None
+    last_updated = None    
+        
+    if res:
+        dp_rid = res[0]['RID']
+        last_updated = res[0]['submission_time']
 
     return json.dumps({
         'id': dcc['id'],
@@ -269,8 +331,8 @@ def dcc_info(dcc_id):
         'subject_count': counts['subject_count'],
         'biosample_count': counts['biosample_count'],
         'file_count': counts['file_count'],
-        'last_updated': dcc['RMT'],
-        'RID': dcc['RID'],
+        'last_updated': last_updated,
+        'nid': dcc['nid'],
         'datapackage_RID': dp_rid,
     })
 
@@ -283,16 +345,14 @@ def dcc_projects(dcc_id):
     if isinstance(helper, wrappers.Response):
         return helper
 
-    dcc_proj = _id_to_dcc_project(helper, dcc_id)
+    dcc_proj_nid = _id_to_dcc_project_nid(helper, dcc_id)
 
     # DCC not found
     if dcc_proj is None:
         return _dcc_not_found_response(dcc_id)
 
-    # TODO - map to DCC project RID to pass to list_projects
-    
     # DCC found
-    projects = helper.list_projects(parent_project_RID=dcc_proj['RID'])
+    projects = helper.list_projects(parent_project_nid=dcc_proj_nid)
     res = []
     for proj in projects:
         # TODO - nothing in project appears to be non-nullable
@@ -325,7 +385,7 @@ def dcc_filecount(dcc_id):
     if isinstance(helper, wrappers.Response):
         return helper
 
-    dcc_proj = _id_to_dcc_project(helper, dcc_id)
+    dcc_proj_nid = _id_to_dcc_project_nid(helper, dcc_id)
     
     # DCC not found
     if dcc_proj is None:
@@ -338,14 +398,14 @@ def dcc_filecount(dcc_id):
     res = {}
 
     for fc in fcounts:
-        if fc['project_RID'] == dcc_proj['RID']:
+        if fc['project_nid'] == dcc_proj_nid:
             nc = _get_stats_name_and_count(fc, 'data_type_name', 'num_files')
             res[nc['name']] = nc['count']
 
     return json.dumps(res)
 
-# don't filter by DCC if dcc_RID is None
-def _get_dcc_entity_counts(helper, dcc_RID, counts):
+# don't filter by DCC if dcc_nid is None
+def _get_dcc_entity_counts(helper, dcc_nid, counts):
     res = {}
 
     # get path to all subprojects of DCC
@@ -354,12 +414,11 @@ def _get_dcc_entity_counts(helper, dcc_RID, counts):
         p_root = helper.builder.CFDE.project_root.alias('p_root')
         p = helper.builder.CFDE.project.alias('p')
         pipt = helper.builder.CFDE.project_in_project_transitive.alias('pipt')
-        if dcc_RID is None:
+        if dcc_nid is None:
             path = p_root.link(p)
         else:
-            path = dcc.filter(dcc.RID == dcc_RID).link(p)
-        proj_path = path.link(pipt, on= ((p.id_namespace == pipt.leader_project_id_namespace)
-                                    & (p.local_id == pipt.leader_project_local_id )))
+            path = dcc.filter(dcc.nid == dcc_nid).link(p)
+        proj_path = path.link(pipt, on=(p.nid == pipt.leader_project))
         return proj_path
 
     # get path to only top-level subprojects of a root project (i.e., DCC)
@@ -368,105 +427,104 @@ def _get_dcc_entity_counts(helper, dcc_RID, counts):
         p_root = helper.builder.CFDE.project_root.alias('p_root')
         p = helper.builder.CFDE.project.alias('p')
         pip = helper.builder.CFDE.project_in_project.alias('pip')
-        if dcc_RID is None:
+        if dcc_nid is None:
             path = p_root.link(p)
         else:
-            path = dcc.filter(dcc.RID == dcc_RID).link(p)
-        proj_path = path.link(pip, on= ((p.id_namespace == pip.parent_project_id_namespace)
-                                    & (p.local_id == pip.parent_project_local_id )))
+            path = dcc.filter(dcc.nid == dcc_nid).link(p)
+        proj_path = path.link(pip, on=(p.nid == pip.parent_project))
         return proj_path
 
     # path to DCCs' subjects
     def get_subj_path():
         proj_path = get_proj_path()
         s = helper.builder.CFDE.subject.alias('s')
-        subj_path = proj_path.link(s, on= ((proj_path.pipt.member_project_id_namespace == s.project_id_namespace)
-                                           & (proj_path.pipt.member_project_local_id == s.project_local_id )))
+        cf = helper.builder.CFDE.core_fact.alias('cf')
+        subj_path = proj_path.link(cf, on=(proj_path.pipt.member_project == cf.project)).link(s)
         return subj_path
 
     # path to DCCs' biosamples
     def get_biosample_path():
         proj_path = get_proj_path()
         b = helper.builder.CFDE.biosample.alias('b')
-        biosample_path = proj_path.link(b, on= ((proj_path.pipt.member_project_id_namespace == b.project_id_namespace)
-                                                & (proj_path.pipt.member_project_local_id == b.project_local_id )))
+        cf = helper.builder.CFDE.core_fact.alias('cf')
+        biosample_path = proj_path.link(cf, on=(proj_path.pipt.member_project == cf.project)).link(b)
         return biosample_path
 
     # path to DCCs' files
     def get_file_path():
         proj_path = get_proj_path()
         f = helper.builder.CFDE.file.alias('f')
-        file_path = proj_path.link(f, on= ((proj_path.pipt.member_project_id_namespace == f.project_id_namespace)
-                                           & (proj_path.pipt.member_project_local_id == f.project_local_id )))
+        cf = helper.builder.CFDE.core_fact.alias('cf')
+        file_path = proj_path.link(cf, on=(proj_path.pipt.member_project == cf.project)).link(f)
         return file_path
 
     # project counts - all and only children of top-level DCC project node
     if (counts is None) or ('project' in counts):
         pp = get_proj_path()
-        qr = pp.aggregates(CntD(pp.pipt.member_project_local_id).alias('num_projects')).fetch(headers=pass_headers())
+        qr = pp.aggregates(CntD(pp.pipt.member_project).alias('num_projects')).fetch(headers=pass_headers())
         res['project_count'] = qr[0]['num_projects'] - 1
 
         sp = get_subproj_path()
-        qr = sp.aggregates(CntD(sp.pip.RID).alias('num_projects')).fetch(headers=pass_headers())
+        qr = sp.aggregates(CntD(sp.pip.child_project).alias('num_projects')).fetch(headers=pass_headers())
         res['toplevel_project_count'] = qr[0]['num_projects']
 
     # subject count
     if (counts is None) or ('subject' in counts):
         sp = get_subj_path()
-        qr = sp.aggregates(CntD(sp.s.RID).alias('num_subjects')).fetch(headers=pass_headers())
+        qr = sp.aggregates(CntD(sp.s.nid).alias('num_subjects')).fetch(headers=pass_headers())
         res['subject_count'] = qr[0]['num_subjects']
 
     # subjects linked to biosamples
     if (counts is None) or ('subject_with_biosample' in counts):
         bs = helper.builder.CFDE.biosample_from_subject
         sp = get_subj_path().link(bs)
-        qr = sp.aggregates(CntD(sp.s.RID).alias('num_subjects_with_biosamples')).fetch(headers=pass_headers())
+        qr = sp.aggregates(CntD(sp.s.nid).alias('num_subjects_with_biosamples')).fetch(headers=pass_headers())
         res['subject_with_biosample_count'] = qr[0]['num_subjects_with_biosamples']
 
     # subjects linked to files
     if (counts is None) or ('subject_with_file' in counts):
         fs = helper.builder.CFDE.file_describes_subject
         sp = get_subj_path().link(fs)
-        qr = sp.aggregates(CntD(sp.s.RID).alias('num_subjects_with_files')).fetch(headers=pass_headers())
+        qr = sp.aggregates(CntD(sp.s.nid).alias('num_subjects_with_files')).fetch(headers=pass_headers())
         res['subject_with_file_count'] = qr[0]['num_subjects_with_files']
 
     # biosample count
     if (counts is None) or ('biosample' in counts):
         bp = get_biosample_path()
-        qr = bp.aggregates(CntD(bp.b.RID).alias('num_biosamples')).fetch(headers=pass_headers())
+        qr = bp.aggregates(CntD(bp.b.nid).alias('num_biosamples')).fetch(headers=pass_headers())
         res['biosample_count'] = qr[0]['num_biosamples']
 
     # biosamples linked to subjects
     if (counts is None) or ('biosample_with_subject' in counts):
         bp = get_biosample_path().link(bs)
-        qr = bp.aggregates(CntD(bp.b.RID).alias('num_biosamples_with_subjects')).fetch(headers=pass_headers())
+        qr = bp.aggregates(CntD(bp.b.nid).alias('num_biosamples_with_subjects')).fetch(headers=pass_headers())
         res['biosample_with_subject_count'] = qr[0]['num_biosamples_with_subjects']
 
     # biosamples about which files were produced
     if (counts is None) or ('biosample_with_file' in counts):
         fb = helper.builder.CFDE.file_describes_biosample
         bp = get_biosample_path().link(fb)
-        qr = bp.aggregates(CntD(bp.b.RID).alias('num_biosamples_with_files')).fetch(headers=pass_headers())
+        qr = bp.aggregates(CntD(bp.b.nid).alias('num_biosamples_with_files')).fetch(headers=pass_headers())
         res['biosample_with_file_count'] = qr[0]['num_biosamples_with_files']
 
     # file count
     if (counts is None) or ('file' in counts):
         fp = get_file_path()
-        qr = fp.aggregates(CntD(fp.f.RID).alias('num_files')).fetch(headers=pass_headers())
+        qr = fp.aggregates(CntD(fp.f.nid).alias('num_files')).fetch(headers=pass_headers())
         res['file_count'] = qr[0]['num_files']
 
     # files describing subjects
     if (counts is None) or ('file_with_subject' in counts):
         fs = helper.builder.CFDE.file_describes_subject
         sp = get_file_path().link(fs)
-        qr = sp.aggregates(CntD(sp.f.RID).alias('num_files_with_subjects')).fetch(headers=pass_headers())
+        qr = sp.aggregates(CntD(sp.f.nid).alias('num_files_with_subjects')).fetch(headers=pass_headers())
         res['file_with_subject_count'] = qr[0]['num_files_with_subjects']
 
     # files describing biosamples
     if (counts is None) or ('file_with_biosample' in counts):
         fb = helper.builder.CFDE.file_describes_biosample
         sp = get_file_path().link(fb)
-        qr = sp.aggregates(CntD(sp.f.RID).alias('num_files_with_biosamples')).fetch(headers=pass_headers())
+        qr = sp.aggregates(CntD(sp.f.nid).alias('num_files_with_biosamples')).fetch(headers=pass_headers())
         res['file_with_biosample_count'] = qr[0]['num_files_with_biosamples']
 
     return res
@@ -487,8 +545,8 @@ def dcc_linkscount(dcc_id):
         return _dcc_not_found_response(dcc_id)
 
     # DCC found
-    res = _get_dcc_entity_counts(helper, dcc['RID'], None)
-    res['RID'] = dcc['RID']
+    res = _get_dcc_entity_counts(helper, dcc['nid'], None)
+    res['nid'] = dcc['nid']
     return json.dumps(res)
 
 # parameterization for dcc_grouped_stats
@@ -503,7 +561,7 @@ GROUPING_MAP = {
     'assay': { 'dimension': 'assay_type', 'att': 'assay_type_name' },
     'species': { 'dimension': 'species', 'att': 'species_name' },
     'anatomy': { 'dimension': 'anatomy', 'att': 'anatomy_name' },
-    'dcc': {'dimension': 'project_root', 'att': 'project_RID' },
+    'dcc': {'dimension': 'project_root', 'att': 'project_nid' },
 }
 
 # /dcc/{dccId}/stats/{variable}/{grouping}
@@ -529,7 +587,7 @@ def dcc_grouped_stats(dcc_id,variable,grouping):
     if err is not None:
         return _error_response(err, 404)
 
-    dcc_proj = _id_to_dcc_project(helper, dcc_id)
+    dcc_proj_nid = _id_to_dcc_project_nid(helper, dcc_id)
 
     # DCC not found
     if dcc_proj is None:
@@ -544,7 +602,7 @@ def dcc_grouped_stats(dcc_id,variable,grouping):
     res = {}
 
     for ct in counts:
-        if ct['project_RID'] == dcc_proj['RID']:
+        if ct['project_nid'] == dcc_proj_nid:
             nc = _get_stats_name_and_count(ct, gm['att'], vm['att'])
             res[nc['name']] = nc['count']
 
@@ -563,13 +621,13 @@ def _grouped_stats_aux(helper,variable,grouping1,grouping2,add_dcc):
         grouping3 = 'dcc'
         gm3 = GROUPING_MAP[grouping3]
 
-    # need to map project_RID to project_abbreviation if grouping=dcc
-    rid_to_abbrev = {}
+    # need to map project_nid to project_abbreviation if grouping=dcc
+    nid_to_abbrev = {}
     if (grouping1 == "dcc") or (grouping2 == "dcc") or (grouping3 == "dcc"):
         dccs = _all_dccs(helper)
         for dcc in dccs:
-            rid_to_abbrev[dcc['project_RID']] = dcc['dcc_abbreviation']
-    
+            nid_to_abbrev[dcc['project_nid']] = dcc['dcc_abbreviation']
+
     sh = StatsQuery(helper).entity(
         vm['entity']).dimension(gm1['dimension'],
                                 show_nulls=SHOW_NULLS).dimension(gm2['dimension'],
@@ -601,13 +659,13 @@ def _grouped_stats_aux(helper,variable,grouping1,grouping2,add_dcc):
         if dim2 is None:
             dim2 = 'unknown'
 
-        # map RID to abbreviation if needed
+        # map nid to abbreviation if needed
         if (grouping1 == "dcc"):
-            dim1 = rid_to_abbrev[dim1]
+            dim1 = nid_to_abbrev[dim1]
         if (grouping2 == "dcc"):
-            dim2 = rid_to_abbrev[dim2]
+            dim2 = nid_to_abbrev[dim2]
         if (grouping3 == "dcc"):
-            dim3 = rid_to_abbrev[dim3]
+            dim3 = nid_to_abbrev[dim3]
 
         key = dim1
         if dim3 is not None:
@@ -827,6 +885,95 @@ def grouped_stats_other(variable,grouping1,maxgroups1,grouping2,maxgroups2):
 
     # return type is DCCGroupedStatistics, which is a list of DCCGrouping
     return json.dumps(res)
+
+
+# /user/saved_queries
+# Returns a list of saved queries for the logged in user
+# User auth maintained by headers being passed through. See pass_headers()
+@app.route('/user/saved_queries', methods=['GET'])
+def saved_queries():
+    scheme = "http" if HOSTNAME == "localhost" else "https"
+    registry_catalog = ErmrestCatalog(
+        scheme,
+        HOSTNAME,
+        "registry",
+        caching=False
+    )
+
+    registry_builder = registry_catalog.getPathBuilder()
+    path = registry_builder.CFDE.saved_query
+    # sending headers because not instantiating ermrest catalog with a user credential
+    rows = path.entities().fetch(headers=pass_headers())
+    
+    query_url_string = scheme + "://" + HOSTNAME + "/chaise/recordset/#1/{}:{}/*::facets::{}?savedQueryRid={}"
+
+    return_obj = [ {"name" : row["name"], 
+                    "description" : row["description"], 
+                    "query" : query_url_string.format(row["schema_name"], row["table_name"], row["encoded_facets"], row["RID"]),
+                    "last_execution_ts" : row["last_execution_time"],
+                    "creation_ts" : row["RCT"] } for row in rows ]
+
+    return json.dumps(return_obj)
+
+
+# /user/favorites
+# User auth maintained by headers being passed through. See pass_headers()
+@app.route('/user/favorites', methods=['GET'])
+def favorites():
+
+    scheme = "http" if HOSTNAME == "localhost" else "https"
+    registry_catalog = ErmrestCatalog(
+        scheme,
+        HOSTNAME,
+        "registry",
+        caching=False
+    )
+
+    # build path (query) for favorite anatomies
+    registry_builder = registry_catalog.getPathBuilder()
+    path = registry_builder.CFDE.favorite_anatomy
+    path = path.link(registry_builder.CFDE.anatomy) # links in the anatomy record for each favorite including: id, name, description
+
+    # sending headers because we're not instantiating the ermrest catalog with a user credential
+    # Note: If a user has access to someone else's favorites, those will be returned since we are not filtering as in:
+    # path = path.filter(path.favorite_anatomy.user_id == 'some user id')
+    # This applies to the additional 'favorite' queries below
+    rows = path.entities().fetch(headers=pass_headers())
+
+    url_string = scheme + "://" + HOSTNAME + "/chaise/record/#1/CFDE:anatomy/id={}"
+    
+    favorite_anatomies = [ {"name" : row["name"],
+                            "description" : row["description"],
+                            "url" : url_string.format(urllib.parse.quote(row["id"])) } for row in rows]
+    
+    # build path (query) for favorite dccs
+    path = registry_builder.CFDE.favorite_dcc
+    path = path.link(registry_builder.CFDE.dcc) # links in the dcc record for each favorite including: id, name, description
+    rows = path.entities().fetch(headers=pass_headers())
+    
+    url_string = scheme + "://" + HOSTNAME + "/chaise/record/#1/CFDE:dcc/id={}"
+
+    favorite_dccs = [ {"name" : row["dcc_name"],
+                       "description" : row["description"],
+                       "abbreviation" : row["dcc_abbreviation"],
+                       "url" : url_string.format(urllib.parse.quote(row["id"])) } for row in rows]
+
+    path = registry_builder.CFDE.favorite_assay_type
+    path = path.link(registry_builder.CFDE.assay_type)
+    rows = path.entities().fetch(headers=pass_headers())
+    
+    url_string = scheme + "://" + HOSTNAME + "/chaise/record/#1/CFDE:assay_type/id={}"
+
+    favorite_assays = [ {"name" : row["name"],
+                         "description" : row["description"],
+                         "url" : url_string.format(urllib.parse.quote(row["id"])) } for row in rows]
+
+    return_obj = { "anatomy" : favorite_anatomies,
+                   "dcc" : favorite_dccs,
+                   "assay" : favorite_assays
+    }
+
+    return json.dumps(return_obj)
 
 if __name__ == '__main__':
     app.run(threaded=True)
