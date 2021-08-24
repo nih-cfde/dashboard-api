@@ -5,6 +5,7 @@ import sys
 import atexit
 import datetime
 import urllib.parse
+import requests
 from requests.exceptions import HTTPError
 from flask import Flask, request, make_response, wrappers
 from cfde_deriva.dashboard_queries import StatsQuery, DashboardQueryHelper
@@ -886,12 +887,25 @@ def grouped_stats_other(variable,grouping1,maxgroups1,grouping2,maxgroups2):
     # return type is DCCGroupedStatistics, which is a list of DCCGrouping
     return json.dumps(res)
 
+def _get_user_id():
+    url = _get_scheme() + "://" + HOSTNAME + "/authn/session"
+    id = None
+    r = requests.get(url=url, headers=pass_headers())
+    if r:
+        if r.status_code != 404 and r.json():
+            data = r.json()
+            try:
+                id = data["client"]["id"]
+            except KeyError:
+                pass
+    return id
 
 # /user/saved_queries
 # Returns a list of saved queries for the logged in user
 # User auth maintained by headers being passed through. See pass_headers()
 @app.route('/user/saved_queries', methods=['GET'])
 def saved_queries():
+    user_id = _get_user_id()
     scheme = "http" if HOSTNAME == "localhost" else "https"
     registry_catalog = ErmrestCatalog(
         scheme,
@@ -901,11 +915,13 @@ def saved_queries():
     )
 
     registry_builder = registry_catalog.getPathBuilder()
-    path = registry_builder.CFDE.saved_query
+    saved_query = registry_builder.CFDE.saved_query
+    path = saved_query.filter(saved_query.user_id == user_id)
+
     # sending headers because not instantiating ermrest catalog with a user credential
     rows = path.entities().fetch(headers=pass_headers())
     
-    query_url_string = scheme + "://" + HOSTNAME + "/chaise/recordset/#1/{}:{}/*::facets::{}?savedQueryRid={}"
+    query_url_string = "/chaise/recordset/#1/{}:{}/*::facets::{}?savedQueryRid={}"
 
     return_obj = [ {"name" : row["name"], 
                     "description" : row["description"], 
@@ -921,6 +937,7 @@ def saved_queries():
 @app.route('/user/favorites', methods=['GET'])
 def favorites():
 
+    user_id = _get_user_id()
     scheme = "http" if HOSTNAME == "localhost" else "https"
     registry_catalog = ErmrestCatalog(
         scheme,
@@ -933,14 +950,14 @@ def favorites():
     registry_builder = registry_catalog.getPathBuilder()
     path = registry_builder.CFDE.favorite_anatomy
     path = path.link(registry_builder.CFDE.anatomy) # links in the anatomy record for each favorite including: id, name, description
+    path = path.filter(path.favorite_anatomy.user_id == user_id)
 
     # sending headers because we're not instantiating the ermrest catalog with a user credential
     # Note: If a user has access to someone else's favorites, those will be returned since we are not filtering as in:
-    # path = path.filter(path.favorite_anatomy.user_id == 'some user id')
     # This applies to the additional 'favorite' queries below
     rows = path.entities().fetch(headers=pass_headers())
 
-    url_string = scheme + "://" + HOSTNAME + "/chaise/record/#1/CFDE:anatomy/id={}"
+    url_string = "/chaise/record/#1/CFDE:anatomy/id={}"
     
     favorite_anatomies = [ {"name" : row["name"],
                             "description" : row["description"],
@@ -949,9 +966,10 @@ def favorites():
     # build path (query) for favorite dccs
     path = registry_builder.CFDE.favorite_dcc
     path = path.link(registry_builder.CFDE.dcc) # links in the dcc record for each favorite including: id, name, description
+    path = path.filter(path.favorite_dcc.user_id == user_id)
     rows = path.entities().fetch(headers=pass_headers())
     
-    url_string = scheme + "://" + HOSTNAME + "/chaise/record/#1/CFDE:dcc/id={}"
+    url_string = "/chaise/record/#1/CFDE:dcc/id={}"
 
     favorite_dccs = [ {"name" : row["dcc_name"],
                        "description" : row["description"],
@@ -960,9 +978,10 @@ def favorites():
 
     path = registry_builder.CFDE.favorite_assay_type
     path = path.link(registry_builder.CFDE.assay_type)
+    path = path.filter(path.favorite_assay_type.user_id == user_id)
     rows = path.entities().fetch(headers=pass_headers())
     
-    url_string = scheme + "://" + HOSTNAME + "/chaise/record/#1/CFDE:assay_type/id={}"
+    url_string = "/chaise/record/#1/CFDE:assay_type/id={}"
 
     favorite_assays = [ {"name" : row["name"],
                          "description" : row["description"],
