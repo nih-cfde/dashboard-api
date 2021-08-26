@@ -959,7 +959,8 @@ def favorites():
 
     url_string = "/chaise/record/#1/CFDE:anatomy/id={}"
     
-    favorite_anatomies = [ {"name" : row["name"],
+    favorite_anatomies = [ {"id" : row["id"],
+                            "name" : row["name"],
                             "description" : row["description"],
                             "url" : url_string.format(urllib.parse.quote(row["id"])) } for row in rows]
     
@@ -984,7 +985,8 @@ def favorites():
     
     url_string = "/chaise/record/#1/CFDE:assay_type/id={}"
 
-    favorite_assays = [ {"name" : row["name"],
+    favorite_assays = [ {"id" : row["id"],
+                         "name" : row["name"],
                          "description" : row["description"],
                          "url" : url_string.format(urllib.parse.quote(row["id"])) } for row in rows]
 
