@@ -971,7 +971,8 @@ def favorites():
     
     url_string = "/chaise/record/#1/CFDE:dcc/id={}"
 
-    favorite_dccs = [ {"name" : row["dcc_name"],
+    favorite_dccs = [ {"id" : row["id"],
+                       "name" : row["dcc_name"],
                        "description" : row["description"],
                        "abbreviation" : row["dcc_abbreviation"],
                        "url" : url_string.format(urllib.parse.quote(row["id"])) } for row in rows]
