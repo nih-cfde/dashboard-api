@@ -920,16 +920,27 @@ def saved_queries():
 
     # sending headers because not instantiating ermrest catalog with a user credential
     rows = path.entities().fetch(headers=pass_headers())
-    
-    query_url_string = "/chaise/recordset/#1/{}:{}/*::facets::{}?savedQueryRid={}"
+   
+    nonempty_query_url_string = "/chaise/recordset/#1/{}:{}/*::facets::{}?savedQueryRid={}"
+    empty_query_url_string = "/chaise/recordset/#1/{}:{}?savedQueryRid={}"
 
-    return_obj = [ {"name" : row["name"], 
-                    "description" : row["description"], 
-                    "query" : query_url_string.format(row["schema_name"], row["table_name"], row["encoded_facets"], row["RID"]),
-                    "last_execution_ts" : row["last_execution_time"],
-                    "creation_ts" : row["RCT"] } for row in rows ]
+    saved_queries = []
 
-    return json.dumps(return_obj)
+    for row in rows:
+        if row['encoded_facets']: 
+           query = nonempty_query_url_string.format(row["schema_name"], row["table_name"], row["encoded_facets"], row["RID"])
+        else:
+           query = empty_query_url_string.format(row["schema_name"], row["table_name"], row["RID"])
+
+        data = { "name" : row["name"], 
+                 "description" : row["description"], 
+                 "query" : query,
+                 "last_execution_ts" : row["last_execution_time"],
+                 "creation_ts" : row["RCT"] 
+        }
+        saved_queries.append(data)
+
+    return json.dumps(saved_queries)
 
 
 # /user/favorites
