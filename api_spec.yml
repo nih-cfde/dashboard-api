@@ -5,7 +5,7 @@ info:
   license:
     name: Apache 2.0
     url: http://www.apache.org/licenses/LICENSE-2.0.html
-  version: 0.0.7
+  version: 0.0.8
 tags:
    - name: "DCC"
      description: "Get information about a single specific DCC."
@@ -520,10 +520,16 @@ components:
       type: object
       description: An object that describes a single favorite.
       required:
+        - id
         - name
         - description
         - url
       properties:
+        id:
+          type: string
+          minLength: 3
+          maxLength: 64
+          pattern: "^[0-9a-z_-]+(:[0-9a-z_-]+)?$"
         name:
           type: string
           minLength: 3
@@ -541,10 +547,16 @@ components:
       type: object
       description: An object that describes a single favorite.
       required:
+        - id
         - name
         - description
         - url
       properties:
+        id:
+          type: string
+          minLength: 3
+          maxLength: 64
+          pattern: "^[0-9a-z_-]+(:[0-9a-z_-]+)?$"
         name:
           type: string
           minLength: 3
@@ -562,11 +574,17 @@ components:
       type: object
       description: An object that describes a single favorite.
       required:
+        - id
         - name
         - description
         - abbreviation
         - url
       properties:
+        id:
+          type: string
+          minLength: 3
+          maxLength: 64
+          pattern: "^[0-9a-z_-]+(:[0-9a-z_-]+)?$"
         name:
           type: string
           minLength: 3
