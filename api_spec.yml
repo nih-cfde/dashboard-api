@@ -469,6 +469,7 @@ components:
       description: An object that describes a single saved query.
       required:
       - name
+      - table_name
       - description
       - query
       - last_execution_ts
@@ -479,6 +480,8 @@ components:
           minLength: 3
           maxLength: 64
           pattern: "^[0-9A-Za-z][0-9A-Za-z_ -]+[0-9A-Za-z]$"
+        table_name:
+          type: string
         description:
           type: string
           minLength: 3

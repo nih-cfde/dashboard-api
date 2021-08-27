@@ -932,7 +932,8 @@ def saved_queries():
         else:
            query = empty_query_url_string.format(row["schema_name"], row["table_name"], row["RID"])
 
-        data = { "name" : row["name"], 
+        data = { "name" : row["name"],
+                 "table_name" : row["table_name"], 
                  "description" : row["description"], 
                  "query" : query,
                  "last_execution_ts" : row["last_execution_time"],
