@@ -615,6 +615,8 @@ components:
       - biosample_count
       - file_count
       - project_count
+      - anatomy_count
+      - assay_count
       - last_updated
       properties:
         catalog_id:
@@ -629,6 +631,12 @@ components:
           type: integer
           minimum: 0
         project_count:
+          type: integer
+          minimum: 0
+        anatomy_count:
+          type: integer
+          minimum: 0
+        assay_count:
           type: integer
           minimum: 0
         last_updated:
