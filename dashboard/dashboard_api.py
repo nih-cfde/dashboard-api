@@ -246,7 +246,7 @@ def all_dcc_info():
     num_projects = 0
 
     # subject, file, biosample, and project counts
-    counts = _get_dcc_entity_counts(helper, None, { 'subject': True, 'file': True, 'biosample': True, 'project': True })
+    counts = _get_dcc_entity_counts(helper, None, { 'subject': True, 'file': True, 'biosample': True, 'project': True, 'anatomies': True, 'assay_types': True })
     # all DCCs
     dccs = _all_dccs(helper)
 
@@ -257,7 +257,9 @@ def all_dcc_info():
         'subject_count': counts['subject_count'],
         'biosample_count': counts['biosample_count'],
         'file_count': counts['file_count'],
-        'project_count': counts['project_count']
+        'project_count': counts['project_count'],
+        'anatomy_count': counts['anatomy_count'],
+        'assay_count': counts['assay_count']
         #'last_updated': last_updated,
     })
 
@@ -366,13 +368,13 @@ def dcc_projects(dcc_id):
 
     return json.dumps(res)
 
-# retrieve entity count from StatsQuery response, replacing 'null' keys with 'unknown'
+# retrieve entity count from StatsQuery response, replacing 'null' keys with 'Not Specified'
 # and null counts with zero
 def _get_stats_name_and_count(row, key_att, count_att):
     name = row[key_att]
     count = row[count_att]
     if (name is None) or (name == 'null'):
-        name = 'unknown'
+        name = 'Not Specified'
     if count is None:
         count = 0
     return {'name': name, 'count': count}
@@ -528,6 +530,15 @@ def _get_dcc_entity_counts(helper, dcc_nid, counts):
         qr = sp.aggregates(CntD(sp.f.nid).alias('num_files_with_biosamples')).fetch(headers=pass_headers())
         res['file_with_biosample_count'] = qr[0]['num_files_with_biosamples']
 
+    if (counts is None) or ('anatomies' in counts):
+        an = helper.builder.CFDE.anatomy.alias("anatomy_alias")
+        qr = an.entities().fetch(headers=pass_headers())
+        res['anatomy_count'] = len(qr)
+
+    if (counts is None) or ('assay_types' in counts):
+        at = helper.builder.CFDE.assay_type.alias("assay_types_alias")
+        qr = at.entities().fetch(headers=pass_headers())
+        res['assay_count'] = len(qr)
     return res
 
 # /dcc/{dccId}/linkcount
@@ -656,9 +667,9 @@ def _grouped_stats_aux(helper,variable,grouping1,grouping2,add_dcc):
                 dim3 = ct[gm3['att']]
         
         if dim1 is None:
-            dim1 = 'unknown'
+            dim1 = 'Not Specified'
         if dim2 is None:
-            dim2 = 'unknown'
+            dim2 = 'Not Specified'
 
         # map nid to abbreviation if needed
         if (grouping1 == "dcc"):
