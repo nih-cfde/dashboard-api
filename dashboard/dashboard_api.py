@@ -27,11 +27,11 @@ DEFAULT_CATALOG_ID = app.config["DERIVA_DEFAULT_CATALOGID"]
 legal_vars = ['files', 'volume', 'samples', 'subjects']
 legal_vars_re = re.compile('^(' + "|".join(legal_vars) + ')$')
 
-legal_groups = ['data_type', 'assay', 'species', 'anatomy']
+legal_groups = ['data_type', 'assay', 'species', 'anatomy', 'disease']
 legal_groups_re = re.compile('^(' + "|".join(legal_groups) + ')$')
 
 # same as legal groups plus 'dcc'
-legal_groups_dcc = ['data_type', 'assay', 'species', 'anatomy', 'dcc']
+legal_groups_dcc = ['data_type', 'assay', 'species', 'anatomy', 'disease', 'dcc']
 legal_groups_dcc_re = re.compile('^(' + "|".join(legal_groups_dcc) + ')$')
 
 helpers = {}
@@ -574,6 +574,7 @@ GROUPING_MAP = {
     'species': { 'dimension': 'species', 'att': 'species_name' },
     'anatomy': { 'dimension': 'anatomy', 'att': 'anatomy_name' },
     'dcc': {'dimension': 'project_root', 'att': 'project_nid' },
+    'disease': { 'dimension': 'disease', 'att': 'disease_name' },
 }
 
 # /dcc/{dccId}/stats/{variable}/{grouping}

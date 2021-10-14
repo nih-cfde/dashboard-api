@@ -232,7 +232,7 @@ paths:
           type: string
       - name: grouping
         in: path
-        description: One of "data_type", "assay", "species", and "anatomy".
+        description: One of "data_type", "assay", "species", "anatomy", and "disease".
         required: true
         schema:
           type: string
@@ -272,13 +272,13 @@ paths:
           type: string
       - name: grouping1
         in: path
-        description: One of "dcc", "data_type", "assay", "species", and "anatomy".
+        description: One of "dcc", "data_type", "assay", "species", "anatomy", and "disease".
         required: true
         schema:
           type: string
       - name: grouping2
         in: path
-        description: One of "dcc", "data_type", "assay", "species", and "anatomy".
+        description: One of "dcc", "data_type", "assay", "species", "anatomy", and "disease".
         required: true
         schema:
           type: string
@@ -324,7 +324,7 @@ paths:
           type: string
       - name: grouping1
         in: path
-        description: One of "dcc", "data_type", "assay", "species", and "anatomy".
+        description: One of "dcc", "data_type", "assay", "species", "anatomy", and "disease".
         required: true
         schema:
           type: string
@@ -336,7 +336,7 @@ paths:
           type: integer
       - name: grouping2
         in: path
-        description: One of "dcc", "data_type", "assay", "species", and "anatomy".
+        description: One of "dcc", "data_type", "assay", "species", "anatomy", and "disease".
         required: true
         schema:
           type: string
