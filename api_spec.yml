@@ -514,39 +514,28 @@ components:
         anatomy:
           type: array
           items:
-            $ref: '#/components/schemas/FavoriteAnatomy'
+            $ref: '#/components/schemas/Favorite'
         assay:
           type: array
           items:
-            $ref: '#/components/schemas/FavoriteAssay'
-    FavoriteAnatomy:
-      type: object
-      description: An object that describes a single favorite.
-      required:
-        - id
-        - name
-        - description
-        - url
-      properties:
-        id:
-          type: string
-          minLength: 3
-          maxLength: 64
-          pattern: "^[0-9a-z_-]+(:[0-9a-z_-]+)?$"
-        name:
-          type: string
-          minLength: 3
-          maxLength: 64
-          pattern: ^[0-9A-Za-z][0-9A-Za-z_ -]+[0-9A-Za-z]$
-        description:
-          type: string
-          minLength: 3
-          maxLength: 256
-        url:
-          type: string
-          minLength: 3
-          maxLength: 128
-    FavoriteAssay:
+            $ref: '#/components/schemas/Favorite'
+        disease:
+          type: array
+          items:
+            $ref: '#/components/schemas/Favorite'
+        taxon:
+          type: array
+          items:
+            $ref: '#/components/schemas/Favorite'
+        data_type:
+          type: array
+          items:
+            $ref: '#/components/schemas/Favorite'
+        data_type:
+          type: array
+          items:
+            $ref: '#/components/schemas/Favorite'
+    Favorite:
       type: object
       description: An object that describes a single favorite.
       required:
