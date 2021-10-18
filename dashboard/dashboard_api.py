@@ -956,70 +956,116 @@ def saved_queries():
     return json.dumps(saved_queries)
 
 
+def _fetch_favorite(path, url_string, dev_mode, include_abbreviation=False):
+
+    # if running in a dev workspace (dev_mode == True), not using pass_headers call
+    if dev_mode:
+        rows = path.entities().fetch()
+    else:
+        # sending headers because we're not instantiating the ermrest catalog with a user credential
+        rows = path.entities().fetch(headers=pass_headers())
+    
+    favorite_data = [ { "id" : row["id"],
+                        "name" : row["name"] if "name" in row else row["dcc_name"],
+                        "description" : row["description"],
+                        "abbreviation" : row["dcc_abbreviation"] if include_abbreviation else None,
+                        "url" : url_string.format(urllib.parse.quote(row["id"])) } for row in rows]
+    return favorite_data
+
+
 # /user/favorites
 # User auth maintained by headers being passed through. See pass_headers()
 @app.route('/user/favorites', methods=['GET'])
 def favorites():
 
+    # If developing locally (without chaise nav as part of stack)
+    # Login to dev site with browser; get webauthn cookie value
+    # Drop in as string variable on next line
+    webauthn_token = None
+    dev_mode = True if webauthn_token else False
+
     user_id = _get_user_id()
     scheme = "http" if HOSTNAME == "localhost" else "https"
-    registry_catalog = ErmrestCatalog(
-        scheme,
-        HOSTNAME,
-        "registry",
-        caching=False
-    )
+    
+    if dev_mode:
+        registry_catalog = ErmrestCatalog(
+            scheme,
+            HOSTNAME,
+            "registry",
+            caching=False,
+            credentials=core_utils.format_credential(token=webauthn_token)
+        )
+    else:
+        registry_catalog = ErmrestCatalog(
+            scheme,
+            HOSTNAME,
+            "registry",
+            caching=False
+        )
 
     # build path (query) for favorite anatomies
     registry_builder = registry_catalog.getPathBuilder()
+    
+    url_string = "/chaise/record/#1/CFDE:anatomy/id={}"
     path = registry_builder.CFDE.favorite_anatomy
     path = path.link(registry_builder.CFDE.anatomy) # links in the anatomy record for each favorite including: id, name, description
-    path = path.filter(path.favorite_anatomy.user_id == user_id)
+    if not dev_mode:
+        path = path.filter(path.favorite_anatomy.user_id == user_id)
+    favorite_anatomies = _fetch_favorite(path, url_string, dev_mode)
 
-    # sending headers because we're not instantiating the ermrest catalog with a user credential
-    # Note: If a user has access to someone else's favorites, those will be returned since we are not filtering as in:
-    # This applies to the additional 'favorite' queries below
-    rows = path.entities().fetch(headers=pass_headers())
-
-    url_string = "/chaise/record/#1/CFDE:anatomy/id={}"
-    
-    favorite_anatomies = [ {"id" : row["id"],
-                            "name" : row["name"],
-                            "description" : row["description"],
-                            "url" : url_string.format(urllib.parse.quote(row["id"])) } for row in rows]
-    
-    # build path (query) for favorite dccs
-    path = registry_builder.CFDE.favorite_dcc
-    path = path.link(registry_builder.CFDE.dcc) # links in the dcc record for each favorite including: id, name, description
-    path = path.filter(path.favorite_dcc.user_id == user_id)
-    rows = path.entities().fetch(headers=pass_headers())
-    
     url_string = "/chaise/record/#1/CFDE:dcc/id={}"
+    path = registry_builder.CFDE.favorite_dcc
+    path = path.link(registry_builder.CFDE.dcc)
+    if not dev_mode:
+        path = path.filter(path.favorite_dcc.user_id == user_id)
+    favorite_dccs = _fetch_favorite(path, url_string, dev_mode, include_abbreviation=True)
 
-    favorite_dccs = [ {"id" : row["id"],
-                       "name" : row["dcc_name"],
-                       "description" : row["description"],
-                       "abbreviation" : row["dcc_abbreviation"],
-                       "url" : url_string.format(urllib.parse.quote(row["id"])) } for row in rows]
-
+    url_string = "/chaise/record/#1/CFDE:assay_type/id={}"
     path = registry_builder.CFDE.favorite_assay_type
     path = path.link(registry_builder.CFDE.assay_type)
-    path = path.filter(path.favorite_assay_type.user_id == user_id)
-    rows = path.entities().fetch(headers=pass_headers())
-    
-    url_string = "/chaise/record/#1/CFDE:assay_type/id={}"
+    if not dev_mode:
+        path = path.filter(path.favorite_assay_type.user_id == user_id)
+    favorite_assays = _fetch_favorite(path, url_string, dev_mode)
 
-    favorite_assays = [ {"id" : row["id"],
-                         "name" : row["name"],
-                         "description" : row["description"],
-                         "url" : url_string.format(urllib.parse.quote(row["id"])) } for row in rows]
+    url_string = "/chaise/record/#1/CFDE:disease/id={}"
+    path = registry_builder.CFDE.favorite_disease
+    path = path.link(registry_builder.CFDE.disease)
+    if not dev_mode:
+        path = path.filter(path.favorite_disease.user_id == user_id)
+    favorite_diseases = _fetch_favorite(path, url_string, dev_mode)
+    
+    url_string = "/chaise/record/#1/CFDE:ncbi_taxonomy/id={}"
+    path = registry_builder.CFDE.favorite_ncbi_taxonomy
+    path = path.link(registry_builder.CFDE.ncbi_taxonomy)
+    if not dev_mode:
+        path = path.filter(path.favorite_ncbi_taxonomy.user_id == user_id)
+    favorite_taxa = _fetch_favorite(path, url_string, dev_mode)
+    
+    url_string = "/chaise/record/#1/CFDE:data_type/id={}"
+    path = registry_builder.CFDE.favorite_data_type
+    path = path.link(registry_builder.CFDE.data_type)
+    if not dev_mode:
+        path = path.filter(path.favorite_data_type.user_id == user_id)
+    favorite_data_types = _fetch_favorite(path, url_string, dev_mode)
+
+    url_string = "/chaise/record/#1/CFDE:file_format/id={}"
+    path = registry_builder.CFDE.favorite_file_format
+    path = path.link(registry_builder.CFDE.file_format)
+    if not dev_mode:
+        path = path.filter(path.favorite_file_format.user_id == user_id)
+    favorite_file_formats = _fetch_favorite(path, url_string, dev_mode)
 
     return_obj = { "anatomy" : favorite_anatomies,
                    "dcc" : favorite_dccs,
-                   "assay" : favorite_assays
+                   "assay" : favorite_assays,
+                   "disease" : favorite_diseases,
+                   "taxon" : favorite_taxa,
+                   "data_type" : favorite_data_types,
+                   "file_format" : favorite_file_formats
     }
 
     return json.dumps(return_obj)
+
 
 if __name__ == '__main__':
     app.run(threaded=True)
