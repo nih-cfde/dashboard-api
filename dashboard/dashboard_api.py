@@ -27,11 +27,11 @@ DEFAULT_CATALOG_ID = app.config["DERIVA_DEFAULT_CATALOGID"]
 legal_vars = ['files', 'volume', 'samples', 'subjects']
 legal_vars_re = re.compile('^(' + "|".join(legal_vars) + ')$')
 
-legal_groups = ['data_type', 'assay', 'species', 'anatomy', 'disease']
+legal_groups = ['data_type', 'assay', 'species', 'anatomy', 'disease', 'sex', 'race', 'ethnicity', 'compound']
 legal_groups_re = re.compile('^(' + "|".join(legal_groups) + ')$')
 
 # same as legal groups plus 'dcc'
-legal_groups_dcc = ['data_type', 'assay', 'species', 'anatomy', 'disease', 'dcc']
+legal_groups_dcc = ['data_type', 'assay', 'species', 'anatomy', 'disease', 'sex', 'race', 'ethnicity', 'compound', 'dcc']
 legal_groups_dcc_re = re.compile('^(' + "|".join(legal_groups_dcc) + ')$')
 
 helpers = {}
@@ -575,6 +575,10 @@ GROUPING_MAP = {
     'anatomy': { 'dimension': 'anatomy', 'att': 'anatomy_name' },
     'dcc': {'dimension': 'project_root', 'att': 'project_nid' },
     'disease': { 'dimension': 'disease', 'att': 'disease_name' },
+    'race': { 'dimension': 'race', 'att': 'race_name'},
+    'sex': {'dimension': 'sex', 'att': 'sex_id'},
+    'ethnicity': {'dimension': 'ethnicity', 'att': 'ethnicity_name'},
+    'compound': {'dimension': 'compound', 'att': 'compound_name'}
 }
 
 # /dcc/{dccId}/stats/{variable}/{grouping}
@@ -919,19 +923,42 @@ def _get_user_id():
 def saved_queries():
     user_id = _get_user_id()
     scheme = "http" if HOSTNAME == "localhost" else "https"
-    registry_catalog = ErmrestCatalog(
-        scheme,
-        HOSTNAME,
-        "registry",
-        caching=False
-    )
+
+    # If developing locally (without chaise nav as part of stack)
+    # Login to dev site with browser; get webauthn cookie value
+    # Drop in as string variable on next line
+    webauthn_token = None
+    dev_mode = True if webauthn_token else False
+    
+    if dev_mode:
+        registry_catalog = ErmrestCatalog(
+            scheme,
+            HOSTNAME,
+            "registry",
+            caching=False,
+            credentials=core_utils.format_credential(token=webauthn_token)
+        )
+    else:
+        registry_catalog = ErmrestCatalog(
+            scheme,
+            HOSTNAME,
+            "registry",
+            caching=False
+        )
 
     registry_builder = registry_catalog.getPathBuilder()
     saved_query = registry_builder.CFDE.saved_query
-    path = saved_query.filter(saved_query.user_id == user_id)
+    if not dev_mode:
+        path = saved_query.filter(saved_query.user_id == user_id)
+    else:
+        path = saved_query
 
-    # sending headers because not instantiating ermrest catalog with a user credential
-    rows = path.entities().fetch(headers=pass_headers())
+    # if running in a dev workspace (dev_mode == True), not using pass_headers call
+    if dev_mode:
+        rows = path.entities().fetch()
+    else:
+        # sending headers because we're not instantiating the ermrest catalog with a user credential
+        rows = path.entities().fetch(headers=pass_headers())
    
     nonempty_query_url_string = "/chaise/recordset/#1/{}:{}/*::facets::{}?savedQueryRid={}"
     empty_query_url_string = "/chaise/recordset/#1/{}:{}?savedQueryRid={}"
@@ -1055,13 +1082,29 @@ def favorites():
         path = path.filter(path.favorite_file_format.user_id == user_id)
     favorite_file_formats = _fetch_favorite(path, url_string, dev_mode)
 
+    url_string = "/chaise/record/#1/CFDE:gene/id={}"
+    path = registry_builder.CFDE.favorite_gene
+    path = path.link(registry_builder.CFDE.gene)
+    if not dev_mode:
+        path = path.filter(path.favorite_gene.user_id == user_id)
+    favorite_genes = _fetch_favorite(path, url_string, dev_mode)
+
+    url_string = "/chaise/record/#1/CFDE:compound/id={}"
+    path = registry_builder.CFDE.favorite_compound
+    path = path.link(registry_builder.CFDE.compound)
+    if not dev_mode:
+        path = path.filter(path.favorite_compound.user_id == user_id)
+    favorite_compounds = _fetch_favorite(path, url_string, dev_mode)
+
     return_obj = { "anatomy" : favorite_anatomies,
                    "dcc" : favorite_dccs,
                    "assay" : favorite_assays,
                    "disease" : favorite_diseases,
                    "taxon" : favorite_taxa,
                    "data_type" : favorite_data_types,
-                   "file_format" : favorite_file_formats
+                   "file_format" : favorite_file_formats,
+                   "gene": favorite_genes,
+                   "compound": favorite_compounds
     }
 
     return json.dumps(return_obj)
