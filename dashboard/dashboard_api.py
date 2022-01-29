@@ -576,7 +576,7 @@ GROUPING_MAP = {
     'dcc': {'dimension': 'project_root', 'att': 'project_nid' },
     'disease': { 'dimension': 'disease', 'att': 'disease_name' },
     'race': { 'dimension': 'race', 'att': 'race_name'},
-    'sex': {'dimension': 'sex', 'att': 'sex_id'},
+    'sex': {'dimension': 'sex', 'att': 'sex_name'},
     'ethnicity': {'dimension': 'ethnicity', 'att': 'ethnicity_name'},
     'compound': {'dimension': 'compound', 'att': 'compound_name'}
 }
