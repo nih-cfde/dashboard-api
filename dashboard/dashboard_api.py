@@ -1,7 +1,6 @@
 import json
 import os
 import re
-import sys
 import atexit
 import datetime
 import urllib.parse
@@ -12,7 +11,7 @@ from cfde_deriva.dashboard_queries import StatsQuery, DashboardQueryHelper
 from deriva.core import DEFAULT_HEADERS, DEFAULT_SESSION_CONFIG, ErmrestCatalog
 from deriva.core.utils import core_utils
 from deriva.core.datapath import Min, Max, Cnt, CntD, Avg, Sum, Bin, DataPathException
-
+from cfde_deriva.metrics import get_datapackage_measurements
 
 app = Flask(__name__)
 app.config.from_object('dashboard.dashboard_config')
@@ -23,6 +22,7 @@ SHOW_NULLS = app.config["SHOW_NULLS"]
 PASS_HEADERS = app.config["PASS_HEADERS"]
 HOSTNAME = app.config["DERIVA_SERVERNAME"]
 DEFAULT_CATALOG_ID = app.config["DERIVA_DEFAULT_CATALOGID"]
+webauthn_token = None if "DEV_TOKEN" not in app.config else app.config["DEV_TOKEN"]
 
 legal_vars = ['files', 'volume', 'samples', 'subjects']
 legal_vars_re = re.compile('^(' + "|".join(legal_vars) + ')$')
@@ -35,6 +35,7 @@ legal_groups_dcc = ['data_type', 'assay', 'species', 'anatomy', 'disease', 'sex'
 legal_groups_dcc_re = re.compile('^(' + "|".join(legal_groups_dcc) + ')$')
 
 helpers = {}
+
 
 @atexit.register
 def cleanup_helpers():
@@ -923,11 +924,6 @@ def _get_user_id():
 def saved_queries():
     user_id = _get_user_id()
     scheme = "http" if HOSTNAME == "localhost" else "https"
-
-    # If developing locally (without chaise nav as part of stack)
-    # Login to dev site with browser; get webauthn cookie value
-    # Drop in as string variable on next line
-    webauthn_token = None
     dev_mode = True if webauthn_token else False
     
     if dev_mode:
@@ -999,16 +995,58 @@ def _fetch_favorite(path, url_string, dev_mode, include_abbreviation=False):
                         "url" : url_string.format(urllib.parse.quote(row["id"])) } for row in rows]
     return favorite_data
 
+@app.route('/user/personal_collections', methods=['GET'])
+def personal_collection():
+    
+    dev_mode = True if webauthn_token else False
+
+    user_id = _get_user_id()
+    scheme = "http" if HOSTNAME == "localhost" else "https"
+    
+    if dev_mode:
+        catalog = ErmrestCatalog(
+            scheme,
+            HOSTNAME,
+            DEFAULT_CATALOG_ID,
+            caching=False,
+            credentials=core_utils.format_credential(token=webauthn_token)
+        )
+    else:
+        catalog = ErmrestCatalog(
+            scheme,
+            HOSTNAME,
+            DEFAULT_CATALOG_ID,
+            caching=False
+        )
+
+    builder = catalog.getPathBuilder()
+    path = builder.CFDE.personal_collection
+
+    if dev_mode:
+        rows = path.entities().fetch()
+    else:
+        # sending headers because we're not instantiating the ermrest catalog with a user credential
+        path = path.filter(path.RCB == user_id)
+        rows = path.entities().fetch(headers=pass_headers())
+    
+    personal_collection_url = "/chaise/record/#1/CFDE:personal_collection/RID={}"
+
+    personal_collections = []
+    for row in rows:
+        data = { "name" : row["name"],
+                 "description" : row["description"], 
+                 "creation_ts" : row["RCT"],
+                 "query" : personal_collection_url.format(row["RID"])
+        }
+        personal_collections.append(data)
+
+    return json.dumps(personal_collections)
 
 # /user/favorites
 # User auth maintained by headers being passed through. See pass_headers()
 @app.route('/user/favorites', methods=['GET'])
 def favorites():
 
-    # If developing locally (without chaise nav as part of stack)
-    # Login to dev site with browser; get webauthn cookie value
-    # Drop in as string variable on next line
-    webauthn_token = None
     dev_mode = True if webauthn_token else False
 
     user_id = _get_user_id()
@@ -1108,6 +1146,66 @@ def favorites():
     }
 
     return json.dumps(return_obj)
+
+# Gets FAIRMetrics for specified catalog
+# Each metric is a name, fair_count, total_count and comment
+# The metric score is calculated as fair_count / total_count
+@app.route('/fair/<int:catalog_id>', methods=['GET'])
+def fair_metrics(catalog_id):
+    
+    session_config = DEFAULT_SESSION_CONFIG.copy()
+    session_config["allow_retry_on_all_methods"] = True
+    scheme = "http" if HOSTNAME == "localhost" else "https"
+    
+    dev_mode = True if webauthn_token else False
+
+    if dev_mode:
+        registry_catalog = ErmrestCatalog(
+            scheme,
+            HOSTNAME,
+            "registry",
+            caching=False,
+            credentials=core_utils.format_credential(token=webauthn_token)
+        )
+    else:
+        registry_catalog = ErmrestCatalog(
+            scheme,
+            HOSTNAME,
+            "registry",
+            caching=False
+        )
+    
+    # Need to get the submission ID by using the catalog_id
+    r_builder = registry_catalog.getPathBuilder()
+    dp_path = r_builder.CFDE.datapackage
+    dp_path = dp_path.filter(dp_path.review_summary_url.regexp('catalogId=%s$' % (catalog_id,)))
+    submission_id = ''
+    
+    if dev_mode:
+       res = dp_path.entities().fetch()
+    else:
+       res = dp_path.entities().fetch(headers=pass_headers())
+    
+    if res:
+        submission_id = res[0]['id']
+    
+    if dev_mode:
+        data = get_datapackage_measurements(registry_catalog, submission_id)
+    else:
+        # sending headers because we're not instantiating the ermrest catalog with a user credential
+        data = get_datapackage_measurements(registry_catalog, submission_id, headers=pass_headers())
+
+    fair = []
+    for metric_dict in data:
+        metric = {
+            "id" : metric_dict["metric"],
+            "name": metric_dict["name"],
+            "fair_count": metric_dict["numerator"],
+             "total_count": metric_dict["denominator"]
+        }
+        fair.append(metric)
+
+    return json.dumps(fair)
 
 
 if __name__ == '__main__':
