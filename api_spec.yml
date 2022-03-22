@@ -12,6 +12,35 @@ tags:
    - name: "Stats"
      description: "Get summary information about multiple DCCs."
 paths:
+  /fair/{catalogId}:
+    get:
+      summary: Returns a list of objects representing the Findable, Accessible, Interoperable, and Reusable (FAIR) metrics particular to a catalog
+      description: Each metric has an identifying name, a score (from 0 to 1) which is calculated by dividing the fair_count by total_count, and a comment
+      tags:
+      - Stats
+      parameters:
+      - name: catalogId
+        in: path
+        description: DERIVA catalog ID of the catalog from which the requested data should be retrieved.
+        required: true
+        schema:
+          type: integer
+      responses:
+        200:
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FAIRList'
+        404:
+          description: The specified DERIVA catalog could not be found.
+        5XX:
+          description: An unexpected error occurred.
+          headers:
+            X-CFDE-Error:
+              schema:
+                type: string
+              description: Human friendly reason for the error or exception.
   /dcc:
     get:
       summary: Returns a list of DCCs.
@@ -383,6 +412,27 @@ paths:
               schema:
                 type: string
               description: Human friendly reason for the error or exception.
+  /user/personal_collections:
+    get:
+      description: Returns a list of peronsal collections for the authenticated user.
+      tags:
+      - User
+      responses:
+        200:
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonalCollectionList'
+        404:
+          description: The DERIVA registry catalog could not be found.
+        5XX:
+          description: An unexpected error occurred.
+          headers:
+            X-CFDE-Error:
+              schema:
+                type: string
+              description: Human friendly reason for the error or exception.
   /user/favorites:
     get:
       description: Returns a representation of favorites for the authenticated user.
@@ -464,6 +514,49 @@ components:
       description: A list of projects within the DCC.
       items:
         type: string
+    FAIRMetric:
+      type: object
+      description: An object with minimal information about a DCC.
+      required:
+      - id
+      - name
+      - fair_count
+      - total_count
+      - comment
+      properties:
+        id:
+          type: string
+          minLength: 3
+          maxLength: 64
+          pattern: "^[0-9a-z_-]+(:[0-9a-z_-]+)?$"
+        name:
+          type: string
+          minLength: 3
+          maxLength: 64
+          pattern: "^[0-9A-Za-z_-]+$"
+        fair_count:
+          type: integer
+          minimum: 0
+        total_count:
+          type: integer
+          minimum: 0
+        comment:
+          type: string
+          minLength: 3
+          maxLength: 256
+      example:
+        id: 21
+        name: Project associated with anatoym
+        fair_count: 20
+        total_count: 50
+        comment: Some comment here
+    FAIRList:
+      type: array
+      description: A list of FAIRMetrics.
+      items:
+        type: array
+        items:
+          $ref: '#/components/schemas/FAIRMetric'
     SavedQuery:
       type: object
       description: An object that describes a single saved query.
@@ -503,6 +596,33 @@ components:
         type: array
         items:
           $ref: '#/components/schemas/SavedQuery'
+    PersonalCollection:
+      type: object
+      description: An object that describes a single Personal Collection.
+      required:
+      - name
+      - description
+      - creation_ts
+      properties:
+        name:
+          type: string
+          minLength: 3
+          maxLength: 64
+          pattern: "^[0-9A-Za-z][0-9A-Za-z_ -]+[0-9A-Za-z]$"
+        description:
+          type: string
+          minLength: 3
+          maxLength: 256
+        creation_ts:
+          type: string
+          format: date-time
+    PersonalCollectionList:
+      type: array
+      description: A list of PersonalCollection types
+      items:
+        type: array
+        items:
+          $ref: '#/components/schemas/PersonalCollection'
     Favorites:
       type: object
       description: An object with 3 keys; 'dcc', 'anatomy', 'assay'. Each value is an array of Favorite instances
@@ -531,7 +651,15 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Favorite'
-        data_type:
+        file_format:
+          type: array
+          items:
+            $ref: '#/components/schemas/Favorite'
+        gene:
+          type: array
+          items:
+            $ref: '#/components/schemas/Favorite'
+        compound:
           type: array
           items:
             $ref: '#/components/schemas/Favorite'
