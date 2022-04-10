@@ -27,11 +27,11 @@ webauthn_token = None if "DEV_TOKEN" not in app.config else app.config["DEV_TOKE
 legal_vars = ['files', 'volume', 'samples', 'subjects']
 legal_vars_re = re.compile('^(' + "|".join(legal_vars) + ')$')
 
-legal_groups = ['data_type', 'assay', 'species', 'anatomy', 'disease', 'sex', 'race', 'ethnicity', 'compound']
+legal_groups = ['data_type', 'assay', 'species', 'anatomy', 'disease', 'sex', 'race', 'ethnicity']
 legal_groups_re = re.compile('^(' + "|".join(legal_groups) + ')$')
 
 # same as legal groups plus 'dcc'
-legal_groups_dcc = ['data_type', 'assay', 'species', 'anatomy', 'disease', 'sex', 'race', 'ethnicity', 'compound', 'dcc']
+legal_groups_dcc = ['data_type', 'assay', 'species', 'anatomy', 'disease', 'sex', 'race', 'ethnicity', 'dcc']
 legal_groups_dcc_re = re.compile('^(' + "|".join(legal_groups_dcc) + ')$')
 
 helpers = {}
@@ -578,8 +578,7 @@ GROUPING_MAP = {
     'disease': { 'dimension': 'disease', 'att': 'disease_name' },
     'race': { 'dimension': 'race', 'att': 'race_name'},
     'sex': {'dimension': 'sex', 'att': 'sex_name'},
-    'ethnicity': {'dimension': 'ethnicity', 'att': 'ethnicity_name'},
-    'compound': {'dimension': 'compound', 'att': 'compound_name'}
+    'ethnicity': {'dimension': 'ethnicity', 'att': 'ethnicity_name'}
 }
 
 # /dcc/{dccId}/stats/{variable}/{grouping}
@@ -1070,7 +1069,8 @@ def favorites():
 
     # build path (query) for favorite anatomies
     registry_builder = registry_catalog.getPathBuilder()
-    
+
+    # This repetitive bit of code could be cleaned up
     url_string = "/chaise/record/#1/CFDE:anatomy/id={}"
     path = registry_builder.CFDE.favorite_anatomy
     path = path.link(registry_builder.CFDE.anatomy) # links in the anatomy record for each favorite including: id, name, description
@@ -1134,6 +1134,27 @@ def favorites():
         path = path.filter(path.favorite_compound.user_id == user_id)
     favorite_compounds = _fetch_favorite(path, url_string, dev_mode)
 
+    url_string = "/chaise/record/#1/CFDE:analysis_type/id={}"
+    path = registry_builder.CFDE.favorite_analysis_type
+    path = path.link(registry_builder.CFDE.analysis_type)
+    if not dev_mode:
+        path = path.filter(path.favorite_analysis_type.user_id == user_id)
+    favorite_analysis_types = _fetch_favorite(path, url_string, dev_mode)
+
+    url_string = "/chaise/record/#1/CFDE:phenotype/id={}"
+    path = registry_builder.CFDE.favorite_phenotype
+    path = path.link(registry_builder.CFDE.phenotype)
+    if not dev_mode:
+        path = path.filter(path.favorite_phenotype.user_id == user_id)
+    favorite_phenotypes = _fetch_favorite(path, url_string, dev_mode)
+
+    url_string = "/chaise/record/#1/CFDE:protein/id={}"
+    path = registry_builder.CFDE.favorite_protein
+    path = path.link(registry_builder.CFDE.protein)
+    if not dev_mode:
+        path = path.filter(path.favorite_protein.user_id == user_id)
+    favorite_proteins = _fetch_favorite(path, url_string, dev_mode)
+
     return_obj = { "anatomy" : favorite_anatomies,
                    "dcc" : favorite_dccs,
                    "assay" : favorite_assays,
@@ -1142,7 +1163,10 @@ def favorites():
                    "data_type" : favorite_data_types,
                    "file_format" : favorite_file_formats,
                    "gene": favorite_genes,
-                   "compound": favorite_compounds
+                   "compound": favorite_compounds,
+                   "analysis_type": favorite_analysis_types,
+                   "phenotype": favorite_phenotypes,
+                   "protein": favorite_proteins
     }
 
     return json.dumps(return_obj)
