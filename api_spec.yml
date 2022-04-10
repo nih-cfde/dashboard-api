@@ -261,7 +261,7 @@ paths:
           type: string
       - name: grouping
         in: path
-        description: One of "dcc", "compound", "data_type", "assay", "species", "anatomy", "disease", "sex", "race", and "ethnicity"
+        description: One of "dcc", "data_type", "assay", "species", "anatomy", "disease", "analysis_type", "sex", "race", and "ethnicity"
         required: true
         schema:
           type: string
@@ -301,13 +301,13 @@ paths:
           type: string
       - name: grouping1
         in: path
-        description: One of "dcc", "compound", "data_type", "assay", "species", "anatomy", "disease", "sex", "race", and "ethnicity"
+        description: One of "dcc", "data_type", "assay", "species", "anatomy", "disease", "analysis_type", "sex", "race", and "ethnicity"
         required: true
         schema:
           type: string
       - name: grouping2
         in: path
-        description: One of "dcc", "compound", "data_type", "assay", "species", "anatomy", "disease", "sex", "race", and "ethnicity"
+        description: One of "dcc", "data_type", "assay", "species", "anatomy", "disease", "analysis_type", "sex", "race", and "ethnicity"
         required: true
         schema:
           type: string
@@ -353,7 +353,7 @@ paths:
           type: string
       - name: grouping1
         in: path
-        description: One of "dcc", "compound", "data_type", "assay", "species", "anatomy", "disease", "sex", "race", and "ethnicity"
+        description: One of "dcc", "data_type", "assay", "species", "anatomy", "disease", "analysis_type", "sex", "race", and "ethnicity"
         required: true
         schema:
           type: string
@@ -365,7 +365,7 @@ paths:
           type: integer
       - name: grouping2
         in: path
-        description: One of "dcc", "compound", "data_type", "assay", "species", "anatomy", "disease", "sex", "race", and "ethnicity"
+        description: One of "dcc", "data_type", "assay", "species", "anatomy", "disease", "analysis_type", "sex", "race", and "ethnicity"
         required: true
         schema:
           type: string
@@ -625,7 +625,7 @@ components:
           $ref: '#/components/schemas/PersonalCollection'
     Favorites:
       type: object
-      description: An object with 3 keys; 'dcc', 'anatomy', 'assay'. Each value is an array of Favorite instances
+      description: An object with a number of keys (e.g. 'dcc', 'anatomy', 'assay'). Each value is an array of Favorite instances
       properties:
         dcc:
           type: array
@@ -660,6 +660,18 @@ components:
           items:
             $ref: '#/components/schemas/Favorite'
         compound:
+          type: array
+          items:
+            $ref: '#/components/schemas/Favorite'
+        analysis_type:
+          type: array
+          items:
+            $ref: '#/components/schemas/Favorite'
+        phenotype:
+          type: array
+          items:
+            $ref: '#/components/schemas/Favorite'
+        protein:
           type: array
           items:
             $ref: '#/components/schemas/Favorite'
