@@ -746,7 +746,9 @@ components:
       - project_count
       - anatomy_count
       - assay_count
-      - last_updated
+      - disease_count
+      - gene_count
+      - compound_count
       properties:
         catalog_id:
           type: integer

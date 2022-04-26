@@ -247,7 +247,7 @@ def all_dcc_info():
     num_projects = 0
 
     # subject, file, biosample, and project counts
-    counts = _get_dcc_entity_counts(helper, None, { 'subject': True, 'file': True, 'biosample': True, 'project': True, 'anatomies': True, 'assay_types': True })
+    counts = _get_dcc_entity_counts(helper, None, { 'subject': True, 'file': True, 'biosample': True, 'project': True, 'anatomies': True, 'assay_types': True, 'disease' : True, 'gene' : True, 'compound' : True })
     # all DCCs
     dccs = _all_dccs(helper)
 
@@ -260,7 +260,10 @@ def all_dcc_info():
         'file_count': counts['file_count'],
         'project_count': counts['project_count'],
         'anatomy_count': counts['anatomy_count'],
-        'assay_count': counts['assay_count']
+        'assay_count': counts['assay_count'],
+        'disease_count': counts['disease_count'],
+        'gene_count': counts['gene_count'],
+        'compound_count': counts['compound_count']
         #'last_updated': last_updated,
     })
 
@@ -540,6 +543,21 @@ def _get_dcc_entity_counts(helper, dcc_nid, counts):
         at = helper.builder.CFDE.assay_type.alias("assay_types_alias")
         qr = at.entities().fetch(headers=pass_headers())
         res['assay_count'] = len(qr)
+
+    if (counts is None) or ('disease' in counts):
+        di = helper.builder.CFDE.disease.alias("disease_alias")
+        qr = di.entities().fetch(headers=pass_headers())
+        res['disease_count'] = len(qr)
+
+    if (counts is None) or ('gene' in counts):
+        ge = helper.builder.CFDE.gene.alias("gene_alias")
+        qr = ge.entities().fetch(headers=pass_headers())
+        res['gene_count'] = len(qr)
+
+    if (counts is None) or ('compound' in counts):
+        co = helper.builder.CFDE.disease.alias("compound_alias")
+        qr = co.entities().fetch(headers=pass_headers())
+        res['compound_count'] = len(qr)
     return res
 
 # /dcc/{dccId}/linkcount
