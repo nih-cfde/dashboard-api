@@ -555,7 +555,7 @@ def _get_dcc_entity_counts(helper, dcc_nid, counts):
         res['gene_count'] = len(qr)
 
     if (counts is None) or ('compound' in counts):
-        co = helper.builder.CFDE.disease.alias("compound_alias")
+        co = helper.builder.CFDE.compound.alias("compound_alias")
         qr = co.entities().fetch(headers=pass_headers())
         res['compound_count'] = len(qr)
     return res
