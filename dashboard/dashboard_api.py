@@ -67,6 +67,9 @@ def _get_helper(catalog_id):
     if catalog_id is None:
         catalog_id = DEFAULT_CATALOG_ID
 
+    if isinstance(catalog_id, int):
+        catalog_id = str(catalog_id)
+
     if catalog_id not in helpers:
         err = None
         try:
