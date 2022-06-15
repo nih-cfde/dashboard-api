@@ -5,7 +5,7 @@ PASS_HEADERS = True
 # Set to 'localhost' for deployment file so the API finds deriva on the same host.
 # When developing on a stack without deriva, use "app-dev.nih-cfde.org"
 DERIVA_SERVERNAME = "localhost"
-DERIVA_DEFAULT_CATALOGID = 1
+DERIVA_DEFAULT_CATALOGID = "1"
 
 # Note: This prop is used for local testing to where the chaise navbar is not part of the stack
 # When testing locally, there won't be an auth token which is passed through the API to cfde-deriva
