@@ -578,10 +578,11 @@ def dcc_linkscount(dcc_id):
 
 # StatsQuery2 parameterization for dcc_grouped_stats
 SQ2_ENTITY_MAP = {
-    'file': { 'att': 'num_files' },
-    'collection': { 'att': 'num_collections' },
-    'biosample': { 'att': 'num_biosamples' },
-    'subject': { 'att': 'num_subjects' },
+    'files': { 'entity': 'file', 'att': 'num_files' },
+    'volume': { 'entity': 'file', 'att': 'total_size_in_bytes' },
+    'collections': { 'entity': 'collection', 'att': 'num_collections' },
+    'samples': { 'entity': 'biosample', 'att': 'num_biosamples' },
+    'subjects': { 'entity': 'subject', 'att': 'num_subjects' },
 }
 SQ2_DIMENSION_MAP = {
     'dcc': { 'att': 'dcc_abbreviation' },
@@ -637,7 +638,7 @@ def dcc_grouped_stats(dcc_id,variable,grouping):
     em = SQ2_ENTITY_MAP[variable]
     dm = SQ2_DIMENSION_MAP[grouping]
 
-    counts = list(StatsQuery2(helper).entity(variable).dimension(grouping).dimension('dcc').fetch_flattened(headers=pass_headers()))
+    counts = list(StatsQuery2(helper).entity(em['entity']).dimension(grouping).dimension('dcc').fetch_flattened(headers=pass_headers()))
     res = {}
 
     for ct in counts:
@@ -676,7 +677,7 @@ def _grouped_stats_aux(helper,variable,grouping1,grouping2,add_dcc):
         for dcc in dccs:
             nid_to_abbrev[dcc['project_nid']] = dcc['dcc_abbreviation']
 
-    sh = StatsQuery2(helper).entity(variable).dimension(grouping1).dimension(grouping2)
+    sh = StatsQuery2(helper).entity(em['entity']).dimension(grouping1).dimension(grouping2)
 
     if dm3 is not None and grouping2 != 'dcc':
         sh = sh.dimension(grouping3)
