@@ -718,7 +718,9 @@ def _grouped_stats_aux(helper,variable,grouping1,grouping2,add_dcc):
                 dim3 = dim2
             else:
                 dim3 = ct[grouping3]
-
+                if dim3 is not None:
+                    dim3 = dim3[dm3['att']]
+                
         if dim1 is None:
             dim1 = 'Not Specified'
         if dim2 is None:
