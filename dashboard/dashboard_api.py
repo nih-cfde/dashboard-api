@@ -659,10 +659,11 @@ def dcc_grouped_stats(dcc_id,variable,grouping):
     # return type is DCCGrouping
     return json.dumps(res)
 
+# TODO - allow grouping2 to be None
 def _grouped_stats_aux(helper,variable,grouping1,grouping2,add_dcc):
     em = SQ2_ENTITY_MAP[variable]
     dm1 = SQ2_DIMENSION_MAP[grouping1]
-    dm2 = SQ2_DIMENSION_MAP[grouping2]
+    dm2 = None if grouping2 is None else SQ2_DIMENSION_MAP[grouping2]
     grouping3 = None
     dm3 = None
 
@@ -672,14 +673,16 @@ def _grouped_stats_aux(helper,variable,grouping1,grouping2,add_dcc):
 
     # need to map project_nid to project_abbreviation if grouping=dcc
     nid_to_abbrev = {}
-    if (grouping1 == "dcc") or (grouping2 == "dcc") or (grouping3 == "dcc"):
+    if (grouping1 == "dcc") or ((grouping2 is not None) and grouping2 == "dcc") or (grouping3 == "dcc"):
         dccs = _all_dccs(helper)
         for dcc in dccs:
             nid_to_abbrev[dcc['project_nid']] = dcc['dcc_abbreviation']
 
-    sh = StatsQuery2(helper).entity(em['entity']).dimension(grouping1).dimension(grouping2)
+    sh = StatsQuery2(helper).entity(em['entity']).dimension(grouping1)
+    if grouping2 is not None:
+        sh = sh.dimension(grouping2)
 
-    if dm3 is not None and grouping2 != 'dcc':
+    if dm3 is not None and ((grouping2 is None) or (grouping2 != 'dcc')):
         sh = sh.dimension(grouping3)
     
     counts = list(sh.fetch_flattened(headers=pass_headers()))
@@ -709,13 +712,15 @@ def _grouped_stats_aux(helper,variable,grouping1,grouping2,add_dcc):
         if dim1 is not None:
             dim1 = dim1[dm1['att']]
         
-        dim2 = ct[grouping2]
+        dim2 = None if grouping2 is None else ct[grouping2]
         if dim2 is not None:
             dim2 = dim2[dm2['att']]
 
+        # TODO - here
+            
         dim3 = None
         if dm3 is not None:
-            if grouping2 == 'dcc':
+            if grouping2 is not None and grouping2 == 'dcc':
                 dim3 = dim2
             else:
                 dim3 = ct[grouping3]
@@ -724,7 +729,9 @@ def _grouped_stats_aux(helper,variable,grouping1,grouping2,add_dcc):
                 
         if dim1 is None:
             dim1 = 'Not Specified'
-        if dim2 is None:
+        if grouping2 is None:
+            dim2 = em['att']
+        elif dim2 is None:
             dim2 = 'Not Specified'
 
         key = dim1
@@ -750,11 +757,36 @@ def _grouped_stats_aux(helper,variable,grouping1,grouping2,add_dcc):
     return res
         
 # TODO - factor out parameter error-checking code
+# /stats/{variable}/{grouping1}/{grouping2}
+
+# Returns statistics for the requested variable grouped by the specified aggregation.
+@app.route('/stats/<string:variable>/<string:grouping1>', methods=['GET'])
+def single_grouped_stats_by_dcc(variable,grouping1):
+    catalog_id = request.args.get("catalogId", type=int)
+    include_dcc = request.args.get("includeDCC") == "true"
+    helper = _get_helper(catalog_id)
+    if isinstance(helper, wrappers.Response):
+        return helper
+
+    err = None
+
+    if variable not in SQ2_ENTITY_MAP:
+        err = "Illegal variable/entity requested - must be one of " + ",".join(SQ2_ENTITY_MAP.keys())
+    if grouping1 not in SQ2_DIMENSION_MAP:
+        err = "Illegal grouping requested - must be one of " + ",".join(SQ2_DIMENSION_MAP.keys())
+
+    # input error
+    if err is not None:
+        return _error_response(err, 404)
+
+    # return type is DCCGroupedStatistics, which is a list of DCCGrouping
+    res = _grouped_stats_aux(helper, variable, grouping1, None, include_dcc)
+    return json.dumps(res)
 
 # /stats/{variable}/{grouping1}/{grouping2}
 # Returns statistics for the requested variable grouped by the specified aggregation.
 @app.route('/stats/<string:variable>/<string:grouping1>/<string:grouping2>', methods=['GET'])
-def grouped_stats_by_dcc(variable,grouping1,grouping2):
+def multi_grouped_stats_by_dcc(variable,grouping1,grouping2):
     catalog_id = request.args.get("catalogId", type=int)
     include_dcc = request.args.get("includeDCC") == "true"
     helper = _get_helper(catalog_id)

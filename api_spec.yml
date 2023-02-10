@@ -281,6 +281,52 @@ paths:
               schema:
                 type: string
               description: Human friendly reason for the error or exception.
+  /stats/{variable}/{grouping1}:
+    get:
+      description: Returns statistics for the requested variable grouped by the specified aggregation.
+      tags:
+      - Stats
+      parameters:
+      - name: catalogId
+        in: query
+        description: DERIVA catalog ID of the catalog from which the requested data should be retrieved.
+        required: false
+        schema:
+          type: integer
+      - name: variable
+        in: path
+        description: One of "files", "volume", "collections", "samples" and "subjects".
+        required: true
+        schema:
+          type: string
+      - name: grouping1
+        in: path
+        description: One of "dcc", "analysis_type", "anatomy", "assay_type", "compression_format", "data_type", "disease", "ethnicity", "file_format", "gene", "mime_type", "ncbi_taxonomy", "phenotype", "protein", "race", "sample_prep_method", "sex", "species", "substance", "subject_granularity", "subject_role"
+        required: true
+        schema:
+          type: string
+      - name: includeDCC
+        in: query
+        description: Whether to include DCC as a grouping, assuming it is not already specified.
+        required: false
+        schema:
+          type: boolean
+      responses:
+        200:
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DCCGroupedStatistics'
+        404:
+          description: The specified DERIVA catalog could not be found, or the variable or grouping was invalid.
+        5XX:
+          description: An unexpected error occurred.
+          headers:
+            X-CFDE-Error:
+              schema:
+                type: string
+              description: Human friendly reason for the error or exception.
   /stats/{variable}/{grouping1}/{grouping2}:
     get:
       description: Returns statistics for the requested variable grouped by the specified aggregations.
@@ -940,6 +986,7 @@ components:
         type: integer
       example:
         data_type: Mass spectrometry data
+        dcc: SPARC
         Other: 493725995
         venous blood: 0
         upper lobe of left lung: 0
