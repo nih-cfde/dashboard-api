@@ -5,7 +5,7 @@ info:
   license:
     name: Apache 2.0
     url: http://www.apache.org/licenses/LICENSE-2.0.html
-  version: 0.0.8
+  version: 0.0.9
 tags:
    - name: "DCC"
      description: "Get information about a single specific DCC."
@@ -255,13 +255,13 @@ paths:
           type: string
       - name: variable
         in: path
-        description: One of "files", "volume", "samples" and "subjects".
+        description: One of "files", "volume", "collections", "samples" and "subjects".
         required: true
         schema:
           type: string
       - name: grouping
         in: path
-        description: One of "dcc", "data_type", "assay", "species", "anatomy", "disease", "analysis_type", "sex", "race", and "ethnicity"
+        description: One of "dcc", "analysis_type", "anatomy", "assay_type", "compression_format", "data_type", "disease", "ethnicity", "file_format", "gene", "mime_type", "ncbi_taxonomy", "phenotype", "protein", "race", "sample_prep_method", "sex", "species", "substance", "subject_granularity", "subject_role"
         required: true
         schema:
           type: string
@@ -295,19 +295,19 @@ paths:
           type: integer
       - name: variable
         in: path
-        description: One of "files", "volume", "samples" and "subjects".
+        description: One of "files", "volume", "collections", "samples" and "subjects".
         required: true
         schema:
           type: string
       - name: grouping1
         in: path
-        description: One of "dcc", "data_type", "assay", "species", "anatomy", "disease", "analysis_type", "sex", "race", and "ethnicity"
+        description: One of "dcc", "analysis_type", "anatomy", "assay_type", "compression_format", "data_type", "disease", "ethnicity", "file_format", "gene", "mime_type", "ncbi_taxonomy", "phenotype", "protein", "race", "sample_prep_method", "sex", "species", "substance", "subject_granularity", "subject_role"
         required: true
         schema:
           type: string
       - name: grouping2
         in: path
-        description: One of "dcc", "data_type", "assay", "species", "anatomy", "disease", "analysis_type", "sex", "race", and "ethnicity"
+        description: One of "dcc", "analysis_type", "anatomy", "assay_type", "compression_format", "data_type", "disease", "ethnicity", "file_format", "gene", "mime_type", "ncbi_taxonomy", "phenotype", "protein", "race", "sample_prep_method", "sex", "species", "substance", "subject_granularity", "subject_role"
         required: true
         schema:
           type: string
@@ -347,13 +347,13 @@ paths:
           type: integer
       - name: variable
         in: path
-        description: One of "files", "volume", "samples" and "subjects".
+        description: One of "files", "volume", "collections", "samples" and "subjects".
         required: true
         schema:
           type: string
       - name: grouping1
         in: path
-        description: One of "dcc", "data_type", "assay", "species", "anatomy", "disease", "analysis_type", "sex", "race", and "ethnicity"
+        description: One of "dcc", "analysis_type", "anatomy", "assay_type", "compression_format", "data_type", "disease", "ethnicity", "file_format", "gene", "mime_type", "ncbi_taxonomy", "phenotype", "protein", "race", "sample_prep_method", "sex", "species", "substance", "subject_granularity", "subject_role"
         required: true
         schema:
           type: string
@@ -365,7 +365,7 @@ paths:
           type: integer
       - name: grouping2
         in: path
-        description: One of "dcc", "data_type", "assay", "species", "anatomy", "disease", "analysis_type", "sex", "race", and "ethnicity"
+        description: One of "dcc", "analysis_type", "anatomy", "assay_type", "compression_format", "data_type", "disease", "ethnicity", "file_format", "gene", "mime_type", "ncbi_taxonomy", "phenotype", "protein", "race", "sample_prep_method", "sex", "species", "substance", "subject_granularity", "subject_role"
         required: true
         schema:
           type: string
