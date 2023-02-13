@@ -7,7 +7,7 @@ import urllib.parse
 import requests
 from requests.exceptions import HTTPError
 from flask import Flask, request, make_response, wrappers
-from cfde_deriva.dashboard_queries import StatsQuery, DashboardQueryHelper
+from cfde_deriva.dashboard_queries import StatsQuery2, DashboardQueryHelper
 from deriva.core import DEFAULT_HEADERS, DEFAULT_SESSION_CONFIG, ErmrestCatalog
 from deriva.core.utils import core_utils
 from deriva.core.datapath import Min, Max, Cnt, CntD, Avg, Sum, Bin, DataPathException
@@ -23,19 +23,7 @@ PASS_HEADERS = app.config["PASS_HEADERS"]
 HOSTNAME = app.config["DERIVA_SERVERNAME"]
 DEFAULT_CATALOG_ID = app.config["DERIVA_DEFAULT_CATALOGID"]
 webauthn_token = None if "DEV_TOKEN" not in app.config else app.config["DEV_TOKEN"]
-
-legal_vars = ['files', 'volume', 'samples', 'subjects']
-legal_vars_re = re.compile('^(' + "|".join(legal_vars) + ')$')
-
-legal_groups = ['data_type', 'assay', 'species', 'anatomy', 'disease', 'sex', 'race', 'ethnicity']
-legal_groups_re = re.compile('^(' + "|".join(legal_groups) + ')$')
-
-# same as legal groups plus 'dcc'
-legal_groups_dcc = ['data_type', 'assay', 'species', 'anatomy', 'disease', 'sex', 'race', 'ethnicity', 'dcc']
-legal_groups_dcc_re = re.compile('^(' + "|".join(legal_groups_dcc) + ')$')
-
 helpers = {}
-
 
 @atexit.register
 def cleanup_helpers():
@@ -128,6 +116,14 @@ def _id_to_dcc_project_nid(helper, dcc_id):
 
     if res is not None:
         return res['project_nid']
+
+    return None
+
+def _id_to_dcc_nid(helper, dcc_id):
+    res = _id_to_dcc(helper, dcc_id)
+
+    if res is not None:
+        return res['nid']
 
     return None
 
@@ -358,7 +354,7 @@ def dcc_projects(dcc_id):
     dcc_proj_nid = _id_to_dcc_project_nid(helper, dcc_id)
 
     # DCC not found
-    if dcc_proj is None:
+    if dcc_proj_nid is None:
         return _dcc_not_found_response(dcc_id)
 
     # DCC found
@@ -375,17 +371,6 @@ def dcc_projects(dcc_id):
 
     return json.dumps(res)
 
-# retrieve entity count from StatsQuery response, replacing 'null' keys with 'Not Specified'
-# and null counts with zero
-def _get_stats_name_and_count(row, key_att, count_att):
-    name = row[key_att]
-    count = row[count_att]
-    if (name is None) or (name == 'null'):
-        name = 'Not Specified'
-    if count is None:
-        count = 0
-    return {'name': name, 'count': count}
-
 # /dcc/{dccId}/filecount
 # Returns the number of files associated with a particular DCC broken down by data type.
 @app.route('/dcc/<string:dcc_id>/filecount', methods=['GET'])
@@ -395,22 +380,30 @@ def dcc_filecount(dcc_id):
     if isinstance(helper, wrappers.Response):
         return helper
 
-    dcc_proj_nid = _id_to_dcc_project_nid(helper, dcc_id)
+    dcc_nid = _id_to_dcc_nid(helper, dcc_id)
     
     # DCC not found
-    if dcc_proj is None:
+    if dcc_nid is None:
         return _dcc_not_found_response(dcc_id)
 
     # DCC found
-    fcounts = list(StatsQuery(helper).entity(
-        'file').dimension('data_type', show_nulls=SHOW_NULLS).dimension(
-        'project_root', show_nulls=SHOW_NULLS).fetch(headers=pass_headers()))
+    fcounts = list(StatsQuery2(helper).entity('file').dimension('data_type').dimension('dcc').fetch_flattened(headers=pass_headers()))
     res = {}
 
     for fc in fcounts:
-        if fc['project_nid'] == dcc_proj_nid:
-            nc = _get_stats_name_and_count(fc, 'data_type_name', 'num_files')
-            res[nc['name']] = nc['count']
+        if fc['dcc'] is None:
+            pass
+        elif fc['dcc']['nid'] == dcc_nid:
+            key = None
+            if fc['data_type'] is None:
+                key = 'Not Specified'
+            else:
+                key = fc['data_type']['name']
+
+            if key in res:
+                res[key] += fc['num_files']
+            else:
+                res[key] = fc['num_files']
 
     return json.dumps(res)
 
@@ -583,23 +576,36 @@ def dcc_linkscount(dcc_id):
     res['nid'] = dcc['nid']
     return json.dumps(res)
 
-# parameterization for dcc_grouped_stats
-VARIABLE_MAP = {
+# StatsQuery2 parameterization for dcc_grouped_stats
+SQ2_ENTITY_MAP = {
     'files': { 'entity': 'file', 'att': 'num_files' },
-    'volume': { 'entity': 'file', 'att': 'num_bytes' },
-    'samples': { 'entity': 'biosample','att': 'num_biosamples' },
+    'volume': { 'entity': 'file', 'att': 'total_size_in_bytes' },
+    'collections': { 'entity': 'collection', 'att': 'num_collections' },
+    'samples': { 'entity': 'biosample', 'att': 'num_biosamples' },
     'subjects': { 'entity': 'subject', 'att': 'num_subjects' },
 }
-GROUPING_MAP = {
-    'data_type': { 'dimension': 'data_type', 'att': 'data_type_name' },
-    'assay': { 'dimension': 'assay_type', 'att': 'assay_type_name' },
-    'species': { 'dimension': 'species', 'att': 'species_name' },
-    'anatomy': { 'dimension': 'anatomy', 'att': 'anatomy_name' },
-    'dcc': {'dimension': 'project_root', 'att': 'project_nid' },
-    'disease': { 'dimension': 'disease', 'att': 'disease_name' },
-    'race': { 'dimension': 'race', 'att': 'race_name'},
-    'sex': {'dimension': 'sex', 'att': 'sex_name'},
-    'ethnicity': {'dimension': 'ethnicity', 'att': 'ethnicity_name'}
+SQ2_DIMENSION_MAP = {
+    'dcc': { 'att': 'dcc_abbreviation' },
+    'analysis_type': { 'att': 'name' },
+    'anatomy':  { 'att': 'name' },
+    'assay_type':  { 'att': 'name' },
+    'compression_format':  { 'att': 'name' },
+    'data_type':  { 'att': 'name' },
+    'disease':  { 'att': 'name' },
+    'ethnicity':  { 'att': 'name' },
+    'file_format':  { 'att': 'name' },
+    'gene':  { 'att': 'id' },
+    'mime_type': { 'att': 'id' },
+    'ncbi_taxonomy':  { 'att': 'name' },
+    'phenotype':  { 'att': 'name' },
+    'protein':  { 'att': 'name' },
+    'race':  { 'att': 'name' },
+    'sample_prep_method':  { 'att': 'name' },
+    'sex':  { 'att': 'name' },
+    'species':  { 'att': 'name' },
+    'substance':  { 'att': 'name' },
+    'subject_granularity':  { 'att': 'name' },
+    'subject_role':  { 'att': 'name' },
 }
 
 # /dcc/{dccId}/stats/{variable}/{grouping}
@@ -613,102 +619,125 @@ def dcc_grouped_stats(dcc_id,variable,grouping):
 
     err = None
 
-    #  check that variable is one of 'files', 'volume', 'samples', 'subjects'
-    if not legal_vars_re.match(variable):
-        err = "Illegal variable requested - must be one of " + ",".join(legal_vars)
+    if variable not in SQ2_ENTITY_MAP:
+        err = "Illegal variable/entity requested - must be one of " + ",".join(SQ2_ENTITY_MAP.keys())
 
-    # check that grouping is one of 'data_type', 'assay', 'species', 'anatomy'
-    if not legal_groups_re.match(grouping):
-        err = "Illegal grouping requested - must be one of " + ",".join(legal_groups)
+    if grouping not in SQ2_DIMENSION_MAP:
+        err = "Illegal grouping requested - must be one of " + ",".join(SQ2_DIMENSION_MAP.keys())
 
     # input error
     if err is not None:
         return _error_response(err, 404)
 
-    dcc_proj_nid = _id_to_dcc_project_nid(helper, dcc_id)
+    dcc_nid = _id_to_dcc_nid(helper, dcc_id)
 
     # DCC not found
-    if dcc_proj is None:
+    if dcc_nid is None:
         return _dcc_not_found_response(dcc_id)
 
-    vm = VARIABLE_MAP[variable]
-    gm = GROUPING_MAP[grouping]
-    counts = list(StatsQuery(helper).entity(
-        vm['entity']).dimension(gm['dimension'],
-                                show_nulls=SHOW_NULLS).dimension('project_root',
-                                                                 show_nulls=SHOW_NULLS).fetch(headers=pass_headers()))
+    em = SQ2_ENTITY_MAP[variable]
+    dm = SQ2_DIMENSION_MAP[grouping]
+
+    counts = list(StatsQuery2(helper).entity(em['entity']).dimension(grouping).dimension('dcc').fetch_flattened(headers=pass_headers()))
     res = {}
 
     for ct in counts:
-        if ct['project_nid'] == dcc_proj_nid:
-            nc = _get_stats_name_and_count(ct, gm['att'], vm['att'])
-            res[nc['name']] = nc['count']
+        if ct['dcc'] is None:
+            pass
+        elif ct['dcc']['nid'] == dcc_nid:
+            key = None
+            if ct[grouping] is None:
+                key = 'Not Specified'
+            else:
+                key = ct[grouping][dm['att']]
+
+            if key in res:
+                res[key] += ct[em['att']]
+            else:
+                res[key] = ct[em['att']]
 
     # return type is DCCGrouping
     return json.dumps(res)
 
+# TODO - allow grouping2 to be None
 def _grouped_stats_aux(helper,variable,grouping1,grouping2,add_dcc):
-
-    vm = VARIABLE_MAP[variable]
-    gm1 = GROUPING_MAP[grouping1]
-    gm2 = GROUPING_MAP[grouping2]
+    em = SQ2_ENTITY_MAP[variable]
+    dm1 = SQ2_DIMENSION_MAP[grouping1]
+    dm2 = None if grouping2 is None else SQ2_DIMENSION_MAP[grouping2]
     grouping3 = None
-    gm3 = None
+    dm3 = None
 
     if add_dcc and grouping1 != 'dcc':
         grouping3 = 'dcc'
-        gm3 = GROUPING_MAP[grouping3]
+        dm3 = SQ2_DIMENSION_MAP[grouping3]
 
     # need to map project_nid to project_abbreviation if grouping=dcc
     nid_to_abbrev = {}
-    if (grouping1 == "dcc") or (grouping2 == "dcc") or (grouping3 == "dcc"):
+    if (grouping1 == "dcc") or ((grouping2 is not None) and grouping2 == "dcc") or (grouping3 == "dcc"):
         dccs = _all_dccs(helper)
         for dcc in dccs:
             nid_to_abbrev[dcc['project_nid']] = dcc['dcc_abbreviation']
 
-    sh = StatsQuery(helper).entity(
-        vm['entity']).dimension(gm1['dimension'],
-                                show_nulls=SHOW_NULLS).dimension(gm2['dimension'],
-                                                                 show_nulls=SHOW_NULLS)
-    if gm3 is not None and grouping2 != 'dcc':
-        sh = sh.dimension(gm3['dimension'], show_nulls=False)
+    sh = StatsQuery2(helper).entity(em['entity']).dimension(grouping1)
+    if grouping2 is not None:
+        sh = sh.dimension(grouping2)
+
+    if dm3 is not None and ((grouping2 is None) or (grouping2 != 'dcc')):
+        sh = sh.dimension(grouping3)
     
-    counts = list(sh.fetch(headers=pass_headers()))
+    counts = list(sh.fetch_flattened(headers=pass_headers()))
     dim_counts = {}
     res = []
 
-    # StatsQuery output looks like this:
-    # {'anatomy_id': 'UBERON:0002387', 'species_id': 'NCBI:txid9606', 'num_subjects': 1, 'anatomy_name': 'pes', 'species_name': 'Homo sapiens'}
-    # The following code aggregates/rewrites to this format (expected by dashboard):
-    # {"anatomy": "pes", "Homo sapiens": 1}
+    # StatsQuery2 output looks like this:
+    #
+    # {'num_files': 789,
+    #  'total_size_in_bytes': 970063224,
+    #  'dcc': {'nid': 1,
+    #          'id': 'cfde_registry_dcc:sparc',
+    #          'dcc_name': 'Stimulating Peripheral Activity to Relieve Conditions',
+    #          'dcc_abbreviation': 'SPARC',
+    #          'dcc_description': 'To transform our understanding of nerve-organ interactions
+    #             by providing access to high-value datasets, maps, and computational studies
+    #             with the intent of advancing bioelectronic medicine towards treatments that
+    #             change lives. The SPARC program is supported by the NIH Common Fund to
+    #             accelerate development of therapeutic devices and identification of neural
+    #             targets for bioelectronic medicine—modulating electrical activity in nerves
+    #             to help treat diseases and conditions, such as hypertension and gastrointestinal
+    #             disorders, by precisely adjusting organ function.'},
+    #  'assay_type': None}
+    #
     for ct in counts:
-        dim1 = ct[gm1['att']]
-        dim2 = ct[gm2['att']]
+        dim1 = ct[grouping1]
+        if dim1 is not None:
+            dim1 = dim1[dm1['att']]
+        
+        dim2 = None if grouping2 is None else ct[grouping2]
+        if dim2 is not None:
+            dim2 = dim2[dm2['att']]
 
+        # TODO - here
+            
         dim3 = None
-        if gm3 is not None:
-            if grouping2 == 'dcc':
+        if dm3 is not None:
+            if grouping2 is not None and grouping2 == 'dcc':
                 dim3 = dim2
             else:
-                dim3 = ct[gm3['att']]
-        
+                dim3 = ct[grouping3]
+                if dim3 is not None:
+                    dim3 = dim3[dm3['att']]
+                
         if dim1 is None:
             dim1 = 'Not Specified'
-        if dim2 is None:
+        if grouping2 is None:
+            dim2 = em['att']
+        elif dim2 is None:
             dim2 = 'Not Specified'
-
-        # map nid to abbreviation if needed
-        if (grouping1 == "dcc"):
-            dim1 = nid_to_abbrev[dim1]
-        if (grouping2 == "dcc"):
-            dim2 = nid_to_abbrev[dim2]
-        if (grouping3 == "dcc"):
-            dim3 = nid_to_abbrev[dim3]
 
         key = dim1
         if dim3 is not None:
             key = dim1 + ":" + dim3
-            
+
         if not (key in dim_counts):
             dim_counts[key] = { grouping1 : dim1 }
             if dim3 is not None:
@@ -716,36 +745,62 @@ def _grouped_stats_aux(helper,variable,grouping1,grouping2,add_dcc):
             res.append(dim_counts[key])
 
         # replace None with 0
-        if ct[vm['att']] is None:
-            dim_counts[key][dim2] = 0
+        ctval = 0
+        if ct[em['att']] is not None:
+            ctval  = ct[em['att']]
+
+        if dim2 in dim_counts[key]:
+            dim_counts[key][dim2] += ctval
         else:
-            dim_counts[key][dim2] = ct[vm['att']]
+            dim_counts[key][dim2] = ctval
 
     return res
         
 # TODO - factor out parameter error-checking code
-
 # /stats/{variable}/{grouping1}/{grouping2}
+
 # Returns statistics for the requested variable grouped by the specified aggregation.
-@app.route('/stats/<string:variable>/<string:grouping1>/<string:grouping2>', methods=['GET'])
-def grouped_stats_by_dcc(variable,grouping1,grouping2):
+@app.route('/stats/<string:variable>/<string:grouping1>', methods=['GET'])
+def single_grouped_stats_by_dcc(variable,grouping1):
     catalog_id = request.args.get("catalogId", type=int)
     include_dcc = request.args.get("includeDCC") == "true"
-
     helper = _get_helper(catalog_id)
     if isinstance(helper, wrappers.Response):
         return helper
 
     err = None
 
-    #  check that variable is one of 'files', 'volume', 'samples', 'subjects'
-    if not legal_vars_re.match(variable):
-        err = "Illegal variable requested - must be one of " + ",".join(legal_vars)
-    # check that grouping1 and grouping2 is one of 'data_type', 'assay', 'species', 'anatomy', 'dcc'
-    if not legal_groups_dcc_re.match(grouping1):
-        err = "Illegal grouping1 requested - must be one of " + ",".join(legal_groups)
-    if not legal_groups_dcc_re.match(grouping2):
-        err = "Illegal grouping2 requested - must be one of " + ",".join(legal_groups)
+    if variable not in SQ2_ENTITY_MAP:
+        err = "Illegal variable/entity requested - must be one of " + ",".join(SQ2_ENTITY_MAP.keys())
+    if grouping1 not in SQ2_DIMENSION_MAP:
+        err = "Illegal grouping requested - must be one of " + ",".join(SQ2_DIMENSION_MAP.keys())
+
+    # input error
+    if err is not None:
+        return _error_response(err, 404)
+
+    # return type is DCCGroupedStatistics, which is a list of DCCGrouping
+    res = _grouped_stats_aux(helper, variable, grouping1, None, include_dcc)
+    return json.dumps(res)
+
+# /stats/{variable}/{grouping1}/{grouping2}
+# Returns statistics for the requested variable grouped by the specified aggregation.
+@app.route('/stats/<string:variable>/<string:grouping1>/<string:grouping2>', methods=['GET'])
+def multi_grouped_stats_by_dcc(variable,grouping1,grouping2):
+    catalog_id = request.args.get("catalogId", type=int)
+    include_dcc = request.args.get("includeDCC") == "true"
+    helper = _get_helper(catalog_id)
+    if isinstance(helper, wrappers.Response):
+        return helper
+
+    err = None
+
+    if variable not in SQ2_ENTITY_MAP:
+        err = "Illegal variable/entity requested - must be one of " + ",".join(SQ2_ENTITY_MAP.keys())
+    if grouping1 not in SQ2_DIMENSION_MAP:
+        err = "Illegal grouping requested - must be one of " + ",".join(SQ2_DIMENSION_MAP.keys())
+    if grouping2 not in SQ2_DIMENSION_MAP:
+        err = "Illegal grouping requested - must be one of " + ",".join(SQ2_DIMENSION_MAP.keys())
     if grouping1 == grouping2:
         err = "grouping1 and grouping2 cannot be the same dimension."
 
@@ -886,15 +941,12 @@ def grouped_stats_other(variable,grouping1,maxgroups1,grouping2,maxgroups2):
 
     err = None
 
-    #  check that variable is one of 'files', 'volume', 'samples', 'subjects'
-    if not legal_vars_re.match(variable):
-        err = "Illegal variable requested - must be one of " + ",".join(legal_vars)
-
-    # check that grouping1 and grouping2 is one of 'data_type', 'assay', 'species', 'anatomy', 'dcc'
-    if not legal_groups_dcc_re.match(grouping1):
-        err = "Illegal grouping1 requested - must be one of " + ",".join(legal_groups)
-    if not legal_groups_dcc_re.match(grouping2):
-        err = "Illegal grouping2 requested - must be one of " + ",".join(legal_groups)
+    if variable not in SQ2_ENTITY_MAP:
+        err = "Illegal variable/entity requested - must be one of " + ",".join(SQ2_ENTITY_MAP.keys())
+    if grouping1 not in SQ2_DIMENSION_MAP:
+        err = "Illegal grouping requested - must be one of " + ",".join(SQ2_DIMENSION_MAP.keys())
+    if grouping2 not in SQ2_DIMENSION_MAP:
+        err = "Illegal grouping requested - must be one of " + ",".join(SQ2_DIMENSION_MAP.keys())
     if grouping1 == grouping2:
         err = "grouping1 and grouping2 cannot be the same dimension."
 
